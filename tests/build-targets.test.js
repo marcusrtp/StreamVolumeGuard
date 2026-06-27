@@ -140,10 +140,15 @@ test("public docs explain browser support and platform limits", () => {
   const doc = fs.readFileSync(path.join(root, "docs", "cross-browser-deployment.md"), "utf8");
 
   assert.match(readme, /docs\/cross-browser-deployment\.md/);
+  assert.match(readme, /github\.com\/Fredo0xJtl\/StreamVolume-Guard\/releases/);
+  assert.match(readme, /streamvolume-guard-chromium-0\.1\.3\.zip/);
+  assert.match(readme, /streamvolume-guard-firefox-0\.1\.3\.zip/);
+  assert.match(readme, /streamvolume-guard-firefox-android-0\.1\.3\.zip/);
+  assert.match(readme, /streamvolume-guard-safari-source-0\.1\.3\.zip/);
   assert.match(readme, /edge:\/\/extensions/);
   assert.match(readme, /dist[\\/]chromium/);
   assert.match(readme, /about:debugging#\/runtime\/this-firefox/);
-  assert.match(readme, /dist[\\/]firefox[\\/]manifest\.json/);
+  assert.match(readme, /manifest\.json/);
   assert.match(readme, /dist[\\/]safari-source/);
   assert.match(readme, /Xcode/);
   if (fs.existsSync(gitignorePath)) {

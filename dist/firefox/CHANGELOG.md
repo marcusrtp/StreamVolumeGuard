@@ -16,6 +16,7 @@ Le changelog public est volontairement consolidé : les micro-corrections faites
 - Ajout d'un indicateur de qualité dans l'export diagnostic pour savoir si le fichier est exploitable ou incomplet.
 - Ajout d'un test streamer guidé dans la page locale pour valider rapidement faible, fort et très fort avant un live.
 - Ajout de la page de test et des guides testeurs essentiels dans les distributions publiques.
+- Clarification du README pour guider les débutants vers les fichiers `.zip` de la release GitHub.
 - Profils par plateforme clarifiés dans les options avec badge recommandé/personnalisé et sélection plus explicite.
 
 ## [0.1.3] - 2026-06-27

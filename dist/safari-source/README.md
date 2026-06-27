@@ -77,37 +77,88 @@ Tous les réglages restent locaux. Il n'y a pas de compte utilisateur, pas de sy
 
 ## Télécharger Depuis GitHub
 
-1. Clique sur `Release` sur la droite de l'écran.
-2. Descend en bas de la page.
-3. Choisis la distributon à télécharger ( Chromium, Firefox, Safari )
-4. Clique sur le fichier ZIP choisis.
-5. Décompresse le fichier ZIP.
+Si tu ne connais pas GitHub, suis exactement ces étapes :
 
-Quand une release GitHub est disponible, préfère les fichiers `.zip` de la release : ils contiennent directement le build adapté au navigateur.
+1. Ouvre la page des releases :
 
-La release fournit aussi un zip du projet complet, par exemple `streamvolume-guard-project-0.1.3.zip`, pour récupérer le code source, la documentation, la page de test et les builds `dist/` dans une seule archive.
+[https://github.com/Fredo0xJtl/StreamVolume-Guard/releases](https://github.com/Fredo0xJtl/StreamVolume-Guard/releases)
+
+2. Clique sur la dernière release, par exemple :
+
+```text
+StreamVolume Guard 0.1.3 - stabilité audio de test
+```
+
+3. Descends jusqu'à la zone `Assets`.
+4. Télécharge le zip adapté à ton navigateur.
+
+Choisis ce fichier :
+
+- Chrome, Brave ou Edge : `streamvolume-guard-chromium-0.1.3.zip`
+- Firefox desktop : `streamvolume-guard-firefox-0.1.3.zip`
+- Firefox Android : `streamvolume-guard-firefox-android-0.1.3.zip`
+- Safari : `streamvolume-guard-safari-source-0.1.3.zip`
+- Code source complet + toutes les distributions : `streamvolume-guard-project-0.1.3.zip`
+
+5. Décompresse le zip dans un dossier facile à retrouver, par exemple :
+
+```text
+Documents\StreamVolume Guard
+```
+
+Important : il faut sélectionner le dossier décompressé, pas le fichier `.zip`.
+
+Les zips de release contiennent aussi les fichiers utiles aux testeurs :
+
+- `test-page.html` pour tester l'audio localement ;
+- `docs/tester-checklist.md` pour suivre les tests dans le bon ordre ;
+- `docs/streamer-quickstart-60s.md` pour un test rapide avant live ;
+- `docs/bug-report-template.md` pour envoyer un retour propre ;
+- `docs/cross-browser-deployment.md` pour les détails multi-navigateurs.
 
 ## Installation Dans Chrome Ou Brave
 
-1. Ouvre `chrome://extensions`.
-2. Active le mode développeur.
-3. Clique sur `Load unpacked`.
-4. Sélectionne le dossier de l'extension :
+Cette méthode marche avec le fichier `streamvolume-guard-chromium-0.1.3.zip`.
+
+1. Télécharge et décompresse `streamvolume-guard-chromium-0.1.3.zip`.
+2. Ouvre Chrome.
+3. Copie ceci dans la barre d'adresse :
 
 ```text
-chemin vers le dossier StreamVolume Guard
+chrome://extensions
 ```
 
-5. Épingle StreamVolume Guard dans la barre du navigateur.
-6. Ouvre une page avec de l'audio ou de la vidéo.
-7. Clique sur l'icône de l'extension.
-8. Clique sur `Activer cet onglet`.
+4. Active `Mode développeur` en haut à droite.
+5. Clique sur `Charger l'extension non empaquetée` ou `Load unpacked`.
+6. Sélectionne le dossier que tu viens de décompresser :
 
-Pour Brave, utilise `brave://extensions` avec les mêmes étapes.
+```text
+chemin vers StreamVolume Guard décompressé
+```
+
+7. Vérifie que StreamVolume Guard apparaît dans la liste des extensions.
+8. Épingle StreamVolume Guard dans la barre du navigateur.
+9. Ouvre une page avec de l'audio ou de la vidéo.
+10. Clique sur l'icône de l'extension.
+11. Clique sur `Activer cet onglet`.
+
+Pour Brave, utilise la même méthode avec :
+
+```text
+brave://extensions
+```
+
+Si Chrome ou Brave affiche une erreur, vérifie que tu as bien sélectionné le dossier décompressé qui contient `manifest.json`.
 
 ## Installation Dans Firefox, Edge Et Safari
 
-Sur GitHub, les dossiers `dist/` sont inclus pour permettre une installation directe sans outil de build. Si tu modifies le code source, régénère les builds :
+Les utilisateurs doivent partir des zips de la release GitHub, pas du bouton vert `Code`.
+
+Page à ouvrir :
+
+[https://github.com/Fredo0xJtl/StreamVolume-Guard/releases](https://github.com/Fredo0xJtl/StreamVolume-Guard/releases)
+
+Si tu modifies le code source, régénère les builds depuis le projet complet :
 
 ```powershell
 cd "chemin vers StreamVolume Guard"
@@ -116,48 +167,72 @@ node tools/build-targets.js
 
 ### Edge Desktop
 
-1. Ouvre `edge://extensions`.
-2. Active le mode développeur.
-3. Clique sur `Load unpacked`.
-4. Sélectionne :
+Utilise `streamvolume-guard-chromium-0.1.3.zip`.
+
+1. Télécharge et décompresse `streamvolume-guard-chromium-0.1.3.zip`.
+2. Ouvre Edge.
+3. Copie ceci dans la barre d'adresse :
 
 ```text
-chemin vers StreamVolume Guard\dist\chromium
+edge://extensions
+```
+
+4. Active le mode développeur.
+5. Clique sur `Load unpacked`.
+6. Sélectionne le dossier décompressé :
+
+```text
+chemin vers StreamVolume Guard décompressé
 ```
 
 ### Firefox Desktop
 
-1. Ouvre `about:debugging#/runtime/this-firefox`.
-2. Clique sur `Load Temporary Add-on`.
-3. Sélectionne le fichier :
+Utilise `streamvolume-guard-firefox-0.1.3.zip`.
+
+1. Télécharge et décompresse `streamvolume-guard-firefox-0.1.3.zip`.
+2. Ouvre Firefox.
+3. Copie ceci dans la barre d'adresse :
 
 ```text
-chemin vers StreamVolume Guard\dist\firefox\manifest.json
+about:debugging#/runtime/this-firefox
+```
+
+4. Clique sur `Charger un module complémentaire temporaire` ou `Load Temporary Add-on`.
+5. Sélectionne le fichier `manifest.json` dans le dossier décompressé :
+
+```text
+chemin vers StreamVolume Guard décompressé\manifest.json
 ```
 
 Important : cette installation Firefox est temporaire pour les tests. Pour une installation publique stable, il faudra passer par `addons.mozilla.org`.
 
 ### Firefox Android
 
-1. Génère le build avec `node tools/build-targets.js`.
-2. Utilise le dossier :
+Utilise `streamvolume-guard-firefox-android-0.1.3.zip`.
+
+Firefox Android demande plus de manipulations qu'un navigateur desktop. Ce build est fourni pour les tests avancés sur vrai téléphone.
+
+1. Télécharge et décompresse `streamvolume-guard-firefox-android-0.1.3.zip`.
+2. Utilise le dossier décompressé comme source d'extension.
+3. Vérifie le build avec `web-ext lint` si `web-ext` est installé :
 
 ```text
-chemin vers StreamVolume Guard\dist\firefox-android
+web-ext lint --source-dir "chemin vers StreamVolume Guard décompressé"
 ```
 
-3. Vérifie le build avec `web-ext lint --source-dir dist/firefox-android` si `web-ext` est installé.
 4. Teste sur un vrai téléphone Android avec Firefox avant de promettre le support public.
 
 ### Safari macOS Et iOS/iPadOS
 
-Le dossier Safari généré est :
+Utilise `streamvolume-guard-safari-source-0.1.3.zip`.
+
+Ce zip est une source préparée, pas une extension Safari prête à double-cliquer. Safari demande un Mac et Xcode.
+
+Après décompression, le dossier à utiliser est :
 
 ```text
-chemin vers StreamVolume Guard\dist\safari-source
+chemin vers StreamVolume Guard décompressé
 ```
-
-Ce dossier est une source préparée, pas un package Safari final.
 
 Avec un Mac, le test devient raisonnable :
 
