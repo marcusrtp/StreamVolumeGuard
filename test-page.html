@@ -67,6 +67,15 @@
         background: #f3faf6;
       }
 
+      .streamer-check {
+        border-color: #bcd5dc;
+        background: #f4fafb;
+      }
+
+      .streamer-check strong {
+        color: #17202a;
+      }
+
       .live-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
@@ -158,6 +167,17 @@
         Le très fort garde environ 1 dB de marge sous le pic numérique maximum pour rester fort sans grésiller.
       </p>
 
+      <div id="streamerReadiness" class="demo-box streamer-check">
+        <h2>Test streamer guidé</h2>
+        <p>
+          Lance les trois sons avec l'extension active et vérifie si le rendu reste proche de la cible avant un live.
+        </p>
+        <div class="buttons">
+          <button id="streamerTestButton" type="button">Tester pour live</button>
+        </div>
+        <p id="streamerTestResult">En attente du test.</p>
+      </div>
+
       <div id="extensionResults" class="demo-box live-results">
         <h2>Résultats extension</h2>
         <p id="extensionState">Extension non détectée sur cet onglet.</p>
@@ -211,6 +231,7 @@
       const extensionRisk = document.getElementById("extensionRisk");
       const extensionMedia = document.getElementById("extensionMedia");
       const extensionPeaks = document.getElementById("extensionPeaks");
+      const streamerTestResult = document.getElementById("streamerTestResult");
       const TEST_TONE_SECONDS = 10;
       const PULSE_INTERVAL_MS = 8000;
       const DEMO_STEP_MS = 8000;
@@ -227,12 +248,22 @@
         { amplitude: LOUD_AMPLITUDE, startSeconds: TEST_TONE_SECONDS },
         { amplitude: VERY_LOUD_AMPLITUDE, startSeconds: TEST_TONE_SECONDS * 2 }
       ];
+      const STREAMER_TEST_STEPS = [
+        { amplitude: QUIET_AMPLITUDE, label: "son faible", expectedRmsDb: -63 },
+        { amplitude: LOUD_AMPLITUDE, label: "son fort", expectedRmsDb: -43 },
+        { amplitude: VERY_LOUD_AMPLITUDE, label: "son très fort", expectedRmsDb: -4 }
+      ];
       const volumeRampTimers = new WeakMap();
       let pulseTimer;
       let demoTimer;
       let countdownTimer;
       let playRequestId = 0;
       let continuousToneUrl = null;
+      let lastExtensionStatus = null;
+
+      function wait(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
 
       function createSegmentedSineWaveBlob(frequency, segments) {
         const sampleRate = 44100;
@@ -286,6 +317,7 @@
       }
 
       function updateExtensionResults(nextStatus) {
+        lastExtensionStatus = nextStatus;
         extensionState.textContent = nextStatus.excluded
           ? "Extension active, mais domaine exclu"
           : nextStatus.enabled
@@ -299,6 +331,15 @@
         extensionRisk.textContent = nextStatus.riskLevel || "--";
         extensionMedia.textContent = `${nextStatus.mediaProcessed || 0}/${nextStatus.mediaDetected || 0}`;
         extensionPeaks.textContent = String(nextStatus.containedPeakCount || 0);
+      }
+
+      async function waitForExtensionStatus(predicate, timeoutMs) {
+        const startedAt = Date.now();
+        while (Date.now() - startedAt < timeoutMs) {
+          if (lastExtensionStatus && predicate(lastExtensionStatus)) return lastExtensionStatus;
+          await wait(120);
+        }
+        return null;
       }
 
       window.addEventListener("message", (event) => {
@@ -528,6 +569,34 @@
         await playLevel(audio, LOUD_AMPLITUDE, "son fort");
       }
 
+      async function runStreamerReadinessTest() {
+        clearInterval(pulseTimer);
+        clearInterval(demoTimer);
+        clearInterval(countdownTimer);
+        streamerTestResult.textContent = "Test en cours : écoute des trois niveaux...";
+        const results = [];
+
+        for (const step of STREAMER_TEST_STEPS) {
+          await playLevel(audio, step.amplitude, `test streamer - ${step.label}`, true);
+          const stepStatus = await waitForExtensionStatus((nextStatus) => {
+            const outputDeltaDb = Math.abs(Number(nextStatus.outputRmsDb) - Number(nextStatus.targetRmsDb));
+            const inputMatches = Math.abs(Number(nextStatus.rmsDb) - step.expectedRmsDb) <= 4;
+            return nextStatus.enabled &&
+              !nextStatus.excluded &&
+              nextStatus.mediaProcessed > 0 &&
+              inputMatches &&
+              outputDeltaDb <= 0.7;
+          }, 7000);
+          results.push({ label: step.label, ok: Boolean(stepStatus) });
+        }
+
+        const allOk = results.every((entry) => entry.ok);
+        const summary = results.map((entry) => `${entry.label}: ${entry.ok ? "OK" : "à revoir"}`).join(" | ");
+        streamerTestResult.textContent = allOk
+          ? `OK pour live - ${summary}`
+          : `À régler avant live - ${summary}`;
+      }
+
 
       document.getElementById("startButton").addEventListener("click", start);
       document.getElementById("beforeDemoButton").addEventListener("click", () => {
@@ -549,6 +618,7 @@
       document.getElementById("veryLoudButton").addEventListener("click", () => {
         playLevel(audio, VERY_LOUD_AMPLITUDE, "son très fort - le gain doit chuter vite");
       });
+      document.getElementById("streamerTestButton").addEventListener("click", runStreamerReadinessTest);
       document.getElementById("pulseButton").addEventListener("click", async () => {
         clearInterval(pulseTimer);
         clearInterval(demoTimer);

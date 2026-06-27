@@ -4,6 +4,12 @@
   const Settings = WLG.Settings;
   const Limiter = WLG.Limiter;
   const StreamStatus = WLG.StreamStatus;
+  const TRANSITION_DUCK_GAIN = 0.03;
+  const TRANSITION_DUCK_RAMP_SECONDS = 0.01;
+  const TRANSITION_RECOVER_DELAY_SECONDS = 0.018;
+  const TRANSITION_RECOVER_TIME_CONSTANT = 0.032;
+  const OUTPUT_TRIM_DEADBAND_DB = 0.06;
+  const OUTPUT_ESTIMATE_HOLD_MS = 1000;
 
   function calculateTargetGainDb(options) {
     const currentRmsDb = Number(options.currentRmsDb);
@@ -85,6 +91,7 @@
     let previousInputRmsDb = Analyser.MIN_DB;
     let outputRmsDb = Analyser.MIN_DB;
     let outputTrimHoldUntilMs = 0;
+    let preferEstimatedOutputUntilMs = 0;
     let lastPeakDb = Analyser.MIN_DB;
     let predictedPeakDb = Analyser.MIN_DB;
     let riskLevel = "safe";
@@ -243,6 +250,14 @@
       return measuredOutputRmsDb > Analyser.MIN_DB + 1 ? measuredOutputRmsDb : estimatedOutputRmsDb;
     }
 
+    function getTransitionOutputRmsDb() {
+      return Analyser.clamp(
+        getEstimatedOutputRmsDb(),
+        profile.targetRmsDb - 1.1,
+        profile.targetRmsDb + 0.2
+      );
+    }
+
     function resetOutputTrim(timeConstant, snap) {
       currentOutputTrimDb = 0;
       if (outputTrimGain) {
@@ -257,8 +272,8 @@
 
     function duckTransitionOutput(now, shouldDuck) {
       if (!processingEnabled || !wetGain || !shouldDuck) return;
-      rampParamToValue(wetGain.gain, 0.03, 0.006);
-      wetGain.gain.setTargetAtTime(1, now + 0.028, 0.04);
+      rampParamToValue(wetGain.gain, TRANSITION_DUCK_GAIN, TRANSITION_DUCK_RAMP_SECONDS);
+      wetGain.gain.setTargetAtTime(1, now + TRANSITION_RECOVER_DELAY_SECONDS, TRANSITION_RECOVER_TIME_CONSTANT);
     }
 
     function handleLevelJump(nextRmsDb) {
@@ -289,7 +304,7 @@
 
       const correctionDb = profile.targetRmsDb - measuredOutputRmsDb;
       const correctionStepDb = Analyser.clamp(correctionDb * 0.35, -2.5, 2.5);
-      const targetTrimDb = Math.abs(correctionDb) < 0.12
+      const targetTrimDb = Math.abs(correctionDb) < OUTPUT_TRIM_DEADBAND_DB
         ? currentOutputTrimDb
         : Analyser.clamp(currentOutputTrimDb + correctionStepDb, -12, 6);
       const reducing = targetTrimDb < currentOutputTrimDb;
@@ -331,8 +346,16 @@
       const shouldDuckTransition = processingEnabled &&
         (levelJumped || outputWouldOvershoot) &&
         targetGainDb < currentGainDb - 1;
+      const shouldSnapGain = outputWouldOvershoot ||
+        (levelJumped && targetGainDb < currentGainDb - 1);
+      if (shouldSnapGain) {
+        preferEstimatedOutputUntilMs = Math.max(
+          preferEstimatedOutputUntilMs,
+          now * 1000 + OUTPUT_ESTIMATE_HOLD_MS
+        );
+      }
 
-      currentGainDb = levelJumped || outputWouldOvershoot
+      currentGainDb = shouldSnapGain
         ? targetGainDb
         : smoothGainDb(
             currentGainDb,
@@ -344,21 +367,35 @@
 
       duckTransitionOutput(now, shouldDuckTransition);
       const linearGain = Analyser.dbToLinear(currentGainDb);
-      if (levelJumped || outputWouldOvershoot) {
+      if (shouldSnapGain) {
         rampParamToValue(autoGain.gain, linearGain, 0.012);
       } else {
         autoGain.gain.setTargetAtTime(linearGain, context.currentTime, 0.035);
       }
-      outputRmsDb = readOutputRmsDb();
+      const measuredOutputRmsDb = readOutputRmsDb();
+      const preferEstimatedOutput = now * 1000 < preferEstimatedOutputUntilMs;
+      outputRmsDb = preferEstimatedOutput ? getTransitionOutputRmsDb() : measuredOutputRmsDb;
       if (now * 1000 < outputTrimHoldUntilMs) {
         resetOutputTrim(0.012, true);
-        currentGainDb = targetGainDb;
+        currentGainDb = shouldSnapGain
+          ? targetGainDb
+          : smoothGainDb(
+              currentGainDb,
+              targetGainDb,
+              elapsedMs,
+              profile.attackMs,
+              profile.releaseMs
+            );
         const heldLinearGain = Analyser.dbToLinear(currentGainDb);
-        rampParamToValue(autoGain.gain, heldLinearGain, 0.012);
-        outputRmsDb = getEstimatedOutputRmsDb();
+        if (shouldSnapGain) {
+          rampParamToValue(autoGain.gain, heldLinearGain, 0.012);
+        } else {
+          autoGain.gain.setTargetAtTime(heldLinearGain, context.currentTime, 0.035);
+        }
+        outputRmsDb = preferEstimatedOutput ? getTransitionOutputRmsDb() : getEstimatedOutputRmsDb();
       } else {
-        updateOutputTrim(outputRmsDb, elapsedMs);
-        outputRmsDb = readOutputRmsDb();
+        updateOutputTrim(measuredOutputRmsDb, elapsedMs);
+        outputRmsDb = preferEstimatedOutput ? getTransitionOutputRmsDb() : readOutputRmsDb();
       }
 
       predictedPeakDb = processingEnabled ? lastPeakDb + currentGainDb + currentOutputTrimDb : lastPeakDb;

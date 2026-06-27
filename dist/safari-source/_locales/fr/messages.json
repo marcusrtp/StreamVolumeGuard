@@ -331,6 +331,12 @@
   "platformProfileApplied": {
     "message": "Appliqué"
   },
+  "platformProfileRecommendedProfile": {
+    "message": "Profil recommandé"
+  },
+  "platformProfileCustomProfile": {
+    "message": "Profil personnalisé"
+  },
   "targetVolumeTitle": {
     "message": "Volume moyen voulu"
   },

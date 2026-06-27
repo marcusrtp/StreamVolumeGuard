@@ -4,6 +4,19 @@ Toutes les modifications notables de StreamVolume Guard sont documentées ici.
 
 Le changelog public est volontairement consolidé : les micro-corrections faites avant la première vraie publication sont regroupées dans des versions lisibles pour les testeurs.
 
+## Non publié
+
+### Corrigé
+
+- Ajout d'un garde-fou contre les pics transitoires au début des changements de niveau dans le smoke test navigateur.
+- Stabilisation du ducking de transition du normalizer avec des constantes nommées, pour conserver la protection anti-pic sans laisser passer de sursaut audible.
+- Lissage des grands boosts vers un son faible pour éviter qu'il monte trop haut avant de redescendre.
+- Resserrement du trim de sortie et du smoke test pour vérifier une égalisation plus proche de la cible pendant l'écoute.
+- Export diagnostic enrichi avec une synthèse streamer exploitable, sans URL complète ni titre de page.
+- Ajout d'un indicateur de qualité dans l'export diagnostic pour savoir si le fichier est exploitable ou incomplet.
+- Ajout d'un test streamer guidé dans la page locale pour valider rapidement faible, fort et très fort avant un live.
+- Profils par plateforme clarifiés dans les options avec badge recommandé/personnalisé et sélection plus explicite.
+
 ## [0.1.3] - 2026-06-27
 
 ### Corrigé

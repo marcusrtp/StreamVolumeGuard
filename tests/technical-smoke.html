@@ -77,12 +77,17 @@
         throw new Error(`Timed out waiting for ${description}`);
       }
 
-      async function collectSettledOutputStats(durationMs) {
+      async function collectSettledOutputStats(durationMs, warmupMs = 240) {
         const startedAt = Date.now();
+        const collectAfter = startedAt + warmupMs;
         const samples = [];
         while (Date.now() - startedAt < durationMs) {
           const status = window.StreamVolumeGuard.Content.getStatus();
-          if (Number.isFinite(status.outputRmsDb)) {
+          if (
+            Number.isFinite(status.outputRmsDb) &&
+            status.updatedAt >= collectAfter &&
+            Date.now() >= collectAfter
+          ) {
             samples.push(status);
           }
           await wait(120);
@@ -352,7 +357,8 @@
             }, `${level.name} output near target`, 10000);
             if (
               Math.abs(earlyStats.averageOutputRmsDb - levelStatus.targetRmsDb) > 0.85 ||
-              earlyStats.minOutputRmsDb < levelStatus.targetRmsDb - 1.2
+              earlyStats.minOutputRmsDb < levelStatus.targetRmsDb - 1.2 ||
+              earlyStats.maxOutputRmsDb > levelStatus.targetRmsDb + 1.2
             ) {
               throw new Error(
                 `${level.name} carries stale gain at the start: avg=${earlyStats.averageOutputRmsDb} dB ` +
@@ -387,7 +393,7 @@
           }
           const settledAverageValues = equalizedOutputs.map((entry) => entry.settledStats.averageOutputRmsDb);
           const settledAverageSpreadDb = Number((Math.max(...settledAverageValues) - Math.min(...settledAverageValues)).toFixed(2));
-          if (settledAverageSpreadDb > 0.35) {
+          if (settledAverageSpreadDb > 0.15) {
             throw new Error(
               `Processed test levels drift apart while listening: ${settledAverageSpreadDb} dB ` +
               JSON.stringify(equalizedOutputs)
@@ -413,7 +419,7 @@
               status.gainDb > 30 &&
               status.outputRmsDb > -21.7 &&
               status.outputRmsDb < -20.3 &&
-              outputDeltaDb <= 0.35
+              outputDeltaDb <= 0.2
               ? status
               : null;
           }, "quiet output recovers after very loud level", 3500);

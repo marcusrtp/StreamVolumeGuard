@@ -322,6 +322,17 @@
     return Number.isFinite(number) ? number : fallback;
   }
 
+  function detectBrowserFamily(userAgent) {
+    const value = String(userAgent || "").toLowerCase();
+    if (value.includes("edg/")) return "Edge";
+    if (value.includes("firefox/")) return "Firefox";
+    if (value.includes("opr/") || value.includes("opera")) return "Opera";
+    if (value.includes("brave")) return "Brave";
+    if (value.includes("chrome/") || value.includes("chromium/")) return "Chromium";
+    if (value.includes("safari/")) return "Safari";
+    return "unknown";
+  }
+
   function safeStatus(status) {
     const source = status && typeof status === "object" ? status : {};
     return {
@@ -339,6 +350,7 @@
       skippedAlreadyProcessed: finiteNumber(source.skippedAlreadyProcessed, 0),
       gainDb: finiteNumber(source.gainDb, 0),
       rmsDb: finiteNumber(source.rmsDb, -120),
+      outputRmsDb: finiteNumber(source.outputRmsDb, -120),
       peakDb: finiteNumber(source.peakDb, -120),
       predictedPeakDb: finiteNumber(source.predictedPeakDb, -120),
       riskLevel: String(source.riskLevel || "safe"),
@@ -348,10 +360,60 @@
     };
   }
 
+  function buildDiagnosticQuality(activeTab) {
+    if (!activeTab.installed || activeTab.canInject === false) {
+      return {
+        complete: false,
+        reason: "extension-not-active-on-current-tab",
+        nextStep: "Ouvre l'onglet a diagnostiquer, active l'extension, lance un media, attends 2 a 3 secondes, puis exporte a nouveau."
+      };
+    }
+
+    if (activeTab.excluded) {
+      return {
+        complete: false,
+        reason: "domain-excluded",
+        nextStep: "Retire ce domaine de la liste d'exclusion ou ouvre un onglet non exclu, puis exporte a nouveau."
+      };
+    }
+
+    if (!activeTab.enabled) {
+      return {
+        complete: false,
+        reason: "normalization-disabled",
+        nextStep: "Active la normalisation sur l'onglet, lance un media, attends 2 a 3 secondes, puis exporte a nouveau."
+      };
+    }
+
+    if (activeTab.mediaDetected === 0) {
+      return {
+        complete: false,
+        reason: "no-media-detected",
+        nextStep: "Lance une video ou un son sur l'onglet avant d'exporter le diagnostic."
+      };
+    }
+
+    if (activeTab.mediaProcessed === 0) {
+      return {
+        complete: false,
+        reason: "media-not-processed",
+        nextStep: "Verifie les permissions de l'extension ou essaie la capture d'onglet si le media reste incompatible."
+      };
+    }
+
+    return {
+      complete: true,
+      reason: "ready-for-bug-report",
+      nextStep: "Joins ce fichier au rapport de bug avec le navigateur utilise et les etapes pour reproduire."
+    };
+  }
+
   async function buildDiagnosticReport() {
     const settings = await Settings.getSettings();
     const status = await sendRuntimeMessage("WLG_GET_ACTIVE_STATUS");
     const manifest = chrome.runtime.getManifest ? chrome.runtime.getManifest() : {};
+    const userAgent = root.navigator && root.navigator.userAgent ? root.navigator.userAgent : "";
+    const activeTab = safeStatus(status);
 
     return {
       schemaVersion: 1,
@@ -359,7 +421,8 @@
       extensionVersion: manifest.version || "dev",
       generatedAt: new Date().toISOString(),
       browser: {
-        userAgent: root.navigator && root.navigator.userAgent ? root.navigator.userAgent : "",
+        family: detectBrowserFamily(userAgent),
+        userAgent,
         language: root.navigator && root.navigator.language ? root.navigator.language : ""
       },
       settings: {
@@ -375,7 +438,25 @@
         domainProfilesCount: Object.keys(settings.domainProfiles || {}).length,
         platformProfilesEnabled: Boolean(settings.platformProfilesEnabled)
       },
-      activeTab: safeStatus(status),
+      activeTab,
+      diagnosticQuality: buildDiagnosticQuality(activeTab),
+      streamerDiagnostics: {
+        browserFamily: detectBrowserFamily(userAgent),
+        site: activeTab.site,
+        pipelineActive: activeTab.enabled && !activeTab.excluded && activeTab.mediaProcessed > 0,
+        tabCaptureActive: activeTab.sourceType === "tab-capture",
+        permissionNeeded: activeTab.canInject === false,
+        sourceIncompatible: activeTab.enabled && !activeTab.excluded && activeTab.mediaDetected > 0 && activeTab.mediaProcessed === 0,
+        activeProfile: activeTab.activeProfile,
+        targetRmsDb: activeTab.targetRmsDb,
+        currentGainDb: activeTab.gainDb,
+        outputRmsDb: activeTab.outputRmsDb,
+        mediaDetected: activeTab.mediaDetected,
+        mediaProcessed: activeTab.mediaProcessed,
+        containedPeakCount: activeTab.containedPeakCount,
+        riskLevel: activeTab.riskLevel,
+        lastError: activeTab.lastError
+      },
       privacy: {
         localOnly: true,
         sentAutomatically: false,
@@ -455,6 +536,7 @@
       const heading = document.createElement("div");
       const title = document.createElement("strong");
       const domains = document.createElement("span");
+      const statusBadge = document.createElement("span");
       const details = document.createElement("p");
       const controls = document.createElement("div");
       const select = document.createElement("select");
@@ -462,14 +544,21 @@
 
       card.className = "platform-profile-card";
       title.textContent = platformLabel(rule);
+      statusBadge.className = `platform-profile-status ${isCustomized ? "is-custom" : "is-recommended"}`;
+      statusBadge.textContent = isCustomized
+        ? i18n("platformProfileCustomProfile", "Profil personnalisé")
+        : i18n("platformProfileRecommendedProfile", "Profil recommandé");
       domains.textContent = rule.domains.join(", ");
-      heading.append(title, domains);
+      domains.className = "platform-profile-domain-list";
+      heading.append(title, statusBadge);
 
       details.textContent = `${i18n("platformProfileApplied", "Appliqué")} : ${profileLabel(activeProfileId)} - ${
         isCustomized
           ? i18n("platformProfileCustomized", "personnalisé")
           : i18n("platformProfileRecommended", "recommandé")
       }`;
+      details.appendChild(document.createElement("br"));
+      details.appendChild(domains);
 
       Object.values(Settings.PROFILES).forEach((profile) => {
         const option = document.createElement("option");
@@ -479,6 +568,7 @@
       });
       select.value = activeProfileId;
       select.dataset.platformDomain = primaryDomain;
+      select.setAttribute("aria-label", `${platformLabel(rule)} - ${i18n("platformProfileApplied", "Appliqué")}`);
 
       reset.type = "button";
       reset.dataset.platformDomain = primaryDomain;

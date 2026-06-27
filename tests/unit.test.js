@@ -361,6 +361,16 @@ test("browser smoke bakes test loudness into WAV data instead of element volume"
   assert.match(smokeHtml, /expectedRmsDb: -4/);
 });
 
+test("browser smoke ignores stale status samples when checking transition overshoot", () => {
+  const smokeHtml = fs.readFileSync(path.join(root, "tests", "technical-smoke.html"), "utf8");
+
+  assert.match(smokeHtml, /const startedAt = Date\.now\(\);/);
+  assert.match(smokeHtml, /const collectAfter = startedAt \+ warmupMs;/);
+  assert.match(smokeHtml, /status\.updatedAt >= collectAfter/);
+  assert.match(smokeHtml, /Date\.now\(\) >= collectAfter/);
+  assert.match(smokeHtml, /earlyStats\.maxOutputRmsDb > levelStatus\.targetRmsDb \+ 1\.2/);
+});
+
 test("manual local server exists and README documents the recommended URL flow", () => {
   const serverSource = fs.readFileSync(path.join(root, "tests", "start-local-server.js"), "utf8");
   const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
@@ -736,6 +746,19 @@ test("public test page displays live extension status when available", () => {
   assert.match(html, /toFixed\(1\)/);
 });
 
+test("public test page exposes a guided streamer readiness check", () => {
+  const html = fs.readFileSync(path.join(root, "test-page.html"), "utf8");
+
+  assert.match(html, /id="streamerTestButton"/);
+  assert.match(html, /id="streamerTestResult"/);
+  assert.match(html, /async function runStreamerReadinessTest\(\)/);
+  assert.match(html, /STREAMER_TEST_STEPS/);
+  assert.match(html, /waitForExtensionStatus/);
+  assert.match(html, /outputDeltaDb <= 0\.7/);
+  assert.match(html, /OK pour live/);
+  assert.match(html, /À régler avant live/);
+});
+
 test("public docs use current test page button labels", () => {
   const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
   const quickstart = fs.readFileSync(path.join(root, "docs", "streamer-quickstart-60s.md"), "utf8");
@@ -906,6 +929,43 @@ test("options apply button confirms only after extension refresh response", () =
   assert.ok(refreshAwaitIndex >= 0 && appliedIndex > refreshAwaitIndex, "button should confirm after refresh response");
 });
 
+test("options diagnostic export includes actionable streamer fields without private page data", () => {
+  const optionsSource = fs.readFileSync(path.join(root, "options", "options.js"), "utf8");
+
+  assert.match(optionsSource, /function detectBrowserFamily\(userAgent\)/);
+  assert.match(optionsSource, /function buildDiagnosticQuality\(activeTab\)/);
+  assert.match(optionsSource, /diagnosticQuality: buildDiagnosticQuality\(activeTab\)/);
+  assert.match(optionsSource, /reason: "extension-not-active-on-current-tab"/);
+  assert.match(optionsSource, /reason: "ready-for-bug-report"/);
+  assert.match(optionsSource, /nextStep:/);
+  assert.match(optionsSource, /streamerDiagnostics:\s*{/);
+  assert.match(optionsSource, /browserFamily: detectBrowserFamily/);
+  assert.match(optionsSource, /pipelineActive: activeTab\.enabled && !activeTab\.excluded && activeTab\.mediaProcessed > 0/);
+  assert.match(optionsSource, /tabCaptureActive: activeTab\.sourceType === "tab-capture"/);
+  assert.match(optionsSource, /permissionNeeded: activeTab\.canInject === false/);
+  assert.match(optionsSource, /sourceIncompatible: activeTab\.enabled && !activeTab\.excluded && activeTab\.mediaDetected > 0 && activeTab\.mediaProcessed === 0/);
+  assert.match(optionsSource, /includesFullUrl: false/);
+  assert.match(optionsSource, /includesPageTitle: false/);
+  assert.doesNotMatch(optionsSource, /location\.href/);
+  assert.doesNotMatch(optionsSource, /document\.title/);
+});
+
+test("options platform profiles show recommended versus custom state clearly", () => {
+  const optionsHtml = fs.readFileSync(path.join(root, "options", "options.html"), "utf8");
+  const optionsSource = fs.readFileSync(path.join(root, "options", "options.js"), "utf8");
+  const frMessages = readJson("_locales/fr/messages.json");
+  const enMessages = readJson("_locales/en/messages.json");
+
+  assert.match(optionsHtml, /id="platformProfilesList"/);
+  assert.match(optionsSource, /className = `platform-profile-status/);
+  assert.match(optionsSource, /platformProfileRecommendedProfile/);
+  assert.match(optionsSource, /platformProfileCustomProfile/);
+  assert.match(optionsSource, /platform-profile-domain-list/);
+  assert.match(optionsSource, /select\.setAttribute\("aria-label"/);
+  assert.equal(frMessages.platformProfileRecommendedProfile.message, "Profil recommandé");
+  assert.equal(enMessages.platformProfileRecommendedProfile.message, "Recommended profile");
+});
+
 test("content publishes safe live status only to the local test page", () => {
   const contentSource = fs.readFileSync(path.join(root, "content.js"), "utf8");
 
@@ -937,8 +997,9 @@ test("normalizer includes a measured output trim to prevent quiet content oversh
 
   assert.match(normalizerSource, /let outputTrimGain = null;/);
   assert.match(normalizerSource, /let currentOutputTrimDb = 0;/);
+  assert.match(normalizerSource, /const OUTPUT_TRIM_DEADBAND_DB = 0\.06;/);
   assert.match(normalizerSource, /function updateOutputTrim\(measuredOutputRmsDb, elapsedMs\)/);
-  assert.match(normalizerSource, /Math\.abs\(correctionDb\) < 0\.12/);
+  assert.match(normalizerSource, /Math\.abs\(correctionDb\) < OUTPUT_TRIM_DEADBAND_DB/);
   assert.match(normalizerSource, /const correctionStepDb = Analyser\.clamp\(correctionDb \* 0\.35, -2\.5, 2\.5\)/);
   assert.match(normalizerSource, /Analyser\.clamp\(currentOutputTrimDb \+ correctionStepDb, -12, 6\)/);
   assert.doesNotMatch(normalizerSource, /currentOutputTrimDb \+ correctionDb/);
@@ -949,8 +1010,14 @@ test("normalizer includes a measured output trim to prevent quiet content oversh
 test("normalizer resets stale state and snaps gain on large input level jumps", () => {
   const normalizerSource = fs.readFileSync(path.join(root, "audio", "normalizer.js"), "utf8");
 
+  assert.match(normalizerSource, /const TRANSITION_DUCK_GAIN = 0\.03;/);
+  assert.match(normalizerSource, /const TRANSITION_DUCK_RAMP_SECONDS = 0\.01;/);
+  assert.match(normalizerSource, /const TRANSITION_RECOVER_DELAY_SECONDS = 0\.018;/);
+  assert.match(normalizerSource, /const TRANSITION_RECOVER_TIME_CONSTANT = 0\.032;/);
+  assert.match(normalizerSource, /const OUTPUT_ESTIMATE_HOLD_MS = 1000;/);
   assert.match(normalizerSource, /let previousInputRmsDb = Analyser\.MIN_DB;/);
   assert.match(normalizerSource, /let outputTrimHoldUntilMs = 0;/);
+  assert.match(normalizerSource, /let preferEstimatedOutputUntilMs = 0;/);
   assert.match(normalizerSource, /function resetOutputTrim\(timeConstant, snap\)/);
   assert.match(normalizerSource, /function handleLevelJump\(nextRmsDb\)/);
   assert.match(normalizerSource, /Math\.abs\(nextRmsDb - previousInputRmsDb\)/);
@@ -960,20 +1027,30 @@ test("normalizer resets stale state and snaps gain on large input level jumps", 
   assert.match(normalizerSource, /now \* 1000 < outputTrimHoldUntilMs/);
   assert.match(normalizerSource, /const predictedOutputBeforeSmoothingDb = lastRmsDb \+ currentGainDb \+ currentOutputTrimDb/);
   assert.match(normalizerSource, /predictedOutputBeforeSmoothingDb > profile\.targetRmsDb \+ 1\.2/);
+  assert.match(normalizerSource, /const shouldSnapGain = outputWouldOvershoot \|\|/);
+  assert.match(normalizerSource, /levelJumped && targetGainDb < currentGainDb - 1/);
+  assert.match(normalizerSource, /preferEstimatedOutputUntilMs = Math\.max\(/);
+  assert.match(normalizerSource, /now \* 1000 \+ OUTPUT_ESTIMATE_HOLD_MS/);
   assert.match(normalizerSource, /levelJumped \|\| outputWouldOvershoot/);
   assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, linearGain, 0\.012\)/);
   assert.match(normalizerSource, /function duckTransitionOutput\(now, shouldDuck\)/);
-  assert.match(normalizerSource, /rampParamToValue\(wetGain\.gain, 0\.03, 0\.006\)/);
-  assert.match(normalizerSource, /wetGain\.gain\.setTargetAtTime\(1, now \+ 0\.028, 0\.04\)/);
+  assert.match(normalizerSource, /rampParamToValue\(wetGain\.gain, TRANSITION_DUCK_GAIN, TRANSITION_DUCK_RAMP_SECONDS\)/);
+  assert.match(normalizerSource, /wetGain\.gain\.setTargetAtTime\(1, now \+ TRANSITION_RECOVER_DELAY_SECONDS, TRANSITION_RECOVER_TIME_CONSTANT\)/);
   assert.match(normalizerSource, /const shouldDuckTransition = processingEnabled[\s\S]*targetGainDb < currentGainDb - 1/);
   assert.match(normalizerSource, /duckTransitionOutput\(now, shouldDuckTransition\)/);
-  assert.match(normalizerSource, /currentGainDb = targetGainDb;/);
+  assert.match(normalizerSource, /currentGainDb = shouldSnapGain[\s\S]*\? targetGainDb/);
   assert.match(normalizerSource, /const heldLinearGain = Analyser\.dbToLinear\(currentGainDb\)/);
+  assert.match(normalizerSource, /const preferEstimatedOutput = now \* 1000 < preferEstimatedOutputUntilMs;/);
+  assert.match(normalizerSource, /function getTransitionOutputRmsDb\(\)/);
+  assert.match(normalizerSource, /profile\.targetRmsDb - 1\.1/);
+  assert.match(normalizerSource, /profile\.targetRmsDb \+ 0\.2/);
+  assert.match(normalizerSource, /outputRmsDb = preferEstimatedOutput \? getTransitionOutputRmsDb\(\) : measuredOutputRmsDb;/);
   assert.doesNotMatch(normalizerSource, /const holdCorrectionDb/);
   assert.doesNotMatch(normalizerSource, /currentGainDb \+=/);
   assert.match(normalizerSource, /rampParamToValue\(outputTrimGain\.gain, 1, 0\.012\)/);
   assert.match(normalizerSource, /const levelJumped = handleLevelJump\(lastRmsDb\)/);
-  assert.match(normalizerSource, /currentGainDb = levelJumped[\s\S]*\? targetGainDb/);
+  assert.doesNotMatch(normalizerSource, /currentGainDb = levelJumped[\s\S]*\? targetGainDb/);
+  assert.match(normalizerSource, /currentGainDb = shouldSnapGain[\s\S]*\? targetGainDb/);
   assert.match(normalizerSource, /function cancelScheduledValues\(param\)/);
   assert.match(normalizerSource, /cancelAndHoldAtTime/);
   assert.match(normalizerSource, /function rampParamToValue\(param, value, rampSeconds\)[\s\S]*cancelScheduledValues\(param\)/);
@@ -988,8 +1065,9 @@ test("normalizer de-clicks transition gain changes with short ramps", () => {
   assert.match(normalizerSource, /cancelScheduledValues\(param\)/);
   assert.match(normalizerSource, /if \(typeof param\.setValueAtTime === "function"\)/);
   assert.match(normalizerSource, /linearRampToValueAtTime\(value, context\.currentTime \+ rampSeconds\)/);
-  assert.match(normalizerSource, /rampParamToValue\(wetGain\.gain, 0\.03, 0\.006\)/);
-  assert.match(normalizerSource, /wetGain\.gain\.setTargetAtTime\(1, now \+ 0\.028, 0\.04\)/);
+  assert.match(normalizerSource, /rampParamToValue\(wetGain\.gain, TRANSITION_DUCK_GAIN, TRANSITION_DUCK_RAMP_SECONDS\)/);
+  assert.match(normalizerSource, /wetGain\.gain\.setTargetAtTime\(1, now \+ TRANSITION_RECOVER_DELAY_SECONDS, TRANSITION_RECOVER_TIME_CONSTANT\)/);
+  assert.doesNotMatch(normalizerSource, /rampParamToValue\(wetGain\.gain, 0\.03, 0\.006\)/);
   assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, linearGain, 0\.012\)/);
   assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, heldLinearGain, 0\.012\)/);
   assert.match(normalizerSource, /rampParamToValue\(outputTrimGain\.gain, 1, 0\.012\)/);
@@ -1339,6 +1417,19 @@ test("help tooltips render above inactive question mark buttons", () => {
     assert.match(css, /\.help-button:hover,\s*\.help-button:focus-visible\s*{[\s\S]*z-index:\s*30;/);
     assert.doesNotMatch(css, /\.help-button\s*{[\s\S]*z-index:\s*10;/);
   });
+});
+
+test("options help tooltip hitbox stays limited to the question mark button", () => {
+  const optionsCss = fs.readFileSync(path.join(root, "options", "options.css"), "utf8");
+
+  assert.match(optionsCss, /\.help-button::after\s*{[\s\S]*visibility:\s*hidden;/);
+  assert.match(optionsCss, /\.help-button::after\s*{[\s\S]*pointer-events:\s*none;/);
+  assert.match(
+    optionsCss,
+    /\.help-button:hover::after,\s*\.help-button:focus-visible::after\s*{[\s\S]*visibility:\s*visible;/
+  );
+  assert.doesNotMatch(optionsCss, /\.option-field:hover\s+\.help-button::after/);
+  assert.doesNotMatch(optionsCss, /\.help-anchor:hover\s+\.help-button::after/);
 });
 
 test("popup right-column help tooltips stay inside the popup frame", () => {

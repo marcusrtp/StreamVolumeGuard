@@ -345,6 +345,25 @@ li strong {
   line-height: 1.35;
 }
 
+.platform-profile-status {
+  padding: 3px 7px;
+  border: 1px solid #cddbe2;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1f6f78;
+}
+
+.platform-profile-status.is-custom {
+  border-color: #f0c27a;
+  background: #fff7e8;
+  color: #9a6108;
+}
+
+.platform-profile-domain-list {
+  display: inline-block;
+  margin-top: 4px;
+}
+
 .platform-profile-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -473,16 +492,19 @@ button {
   line-height: 1.35;
   text-align: left;
   opacity: 0;
+  visibility: hidden;
   z-index: 2;
   pointer-events: none;
   transform: translateY(-2px);
-  transition: opacity 100ms ease, transform 100ms ease;
+  transition: opacity 100ms ease, transform 100ms ease, visibility 0s linear 100ms;
 }
 
 .help-button:hover::after,
 .help-button:focus-visible::after {
   opacity: 1;
+  visibility: visible;
   transform: translateY(0);
+  transition-delay: 0s;
 }
 
 .help-button:hover,
@@ -593,6 +615,18 @@ button[type="submit"] {
   .platform-profile-card span,
   .platform-profile-card p {
     color: #a8b3bf;
+  }
+
+  .platform-profile-status {
+    background: #18212b;
+    border-color: #405367;
+    color: #9ddce3;
+  }
+
+  .platform-profile-status.is-custom {
+    background: #3a2c15;
+    border-color: #9c6c1c;
+    color: #f3c46d;
   }
 
   .diagnostics-export p,
