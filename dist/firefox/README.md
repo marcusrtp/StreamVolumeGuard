@@ -77,10 +77,11 @@ Tous les réglages restent locaux. Il n'y a pas de compte utilisateur, pas de sy
 
 ## Télécharger Depuis GitHub
 
-1. Clique sur `Code`.
-2. Clique sur `Download ZIP`.
-3. Décompresse le fichier ZIP.
-4. Charge le dossier `dist/` adapté à ton navigateur.
+1. Clique sur `Release` sur la droite de l'écran.
+2. Descend en bas de la page.
+3. Choisis la distributon à télécharger ( Chromium, Firefox, Safari )
+4. Clique sur le fichier ZIP choisis.
+5. Décompresse le fichier ZIP.
 
 Quand une release GitHub est disponible, préfère les fichiers `.zip` de la release : ils contiennent directement le build adapté au navigateur.
 
@@ -94,7 +95,7 @@ La release fournit aussi un zip du projet complet, par exemple `streamvolume-gua
 4. Sélectionne le dossier de l'extension :
 
 ```text
-chemin vers StreamVolume Guard\dist\chromium
+chemin vers le dossier StreamVolume Guard
 ```
 
 5. Épingle StreamVolume Guard dans la barre du navigateur.
