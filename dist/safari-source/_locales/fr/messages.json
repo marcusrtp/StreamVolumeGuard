@@ -361,6 +361,9 @@
   "optionsApplyIdle": {
     "message": "Appliquer les réglages"
   },
+  "optionsApplyCooldown": {
+    "message": "Patientez"
+  },
   "optionsApplySending": {
     "message": "Envoi..."
   },
@@ -381,6 +384,9 @@
   },
   "optionsApplyErrorStatus": {
     "message": "réglages enregistrés, envoi impossible"
+  },
+  "optionsApplyDebounceStatus": {
+    "message": "Patientez avant de valider"
   },
   "optionsSaveErrorStatus": {
     "message": "sauvegarde impossible"

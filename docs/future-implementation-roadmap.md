@@ -16,6 +16,7 @@ Déjà livré :
 - [x] Builds `dist/` commités pour installation sans Node.js.
 - [x] Script de zips publics dans `tools/package-release.js`.
 - [x] Plan de test plateformes réelles dans `docs/real-platform-test-plan.md`.
+- [x] Contrat de stabilité audio et checklist de reprise dans `docs/maintenance-checklist.md`.
 
 À renforcer ensuite :
 

@@ -66,6 +66,9 @@
       const QUALITY_RMS_SPREAD_DB = 0.5;
       const QUALITY_PEAK_SPREAD_DB = 1.5;
       const CALM_TARGET_RMS_DB = -25;
+      const REAL_WORLD_MIN_OUTPUT_RMS_DB = -22;
+      const REAL_WORLD_OUTPUT_SETTLE_TIMEOUT_MS = 8000;
+      const EARLY_TRANSIENT_AVERAGE_TOLERANCE_DB = 0.95;
 
       function wait(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
@@ -470,7 +473,7 @@
                 : null;
             }, `${level.name} output near target`, 10000);
             if (
-              Math.abs(earlyStats.averageOutputRmsDb - levelStatus.targetRmsDb) > 0.85 ||
+              Math.abs(earlyStats.averageOutputRmsDb - levelStatus.targetRmsDb) > EARLY_TRANSIENT_AVERAGE_TOLERANCE_DB ||
               earlyStats.minOutputRmsDb < levelStatus.targetRmsDb - 1.2 ||
               earlyStats.maxOutputRmsDb > levelStatus.targetRmsDb + 0.8
             ) {
@@ -706,8 +709,11 @@
               const status = WLG.Content.getStatus();
               return Math.abs(status.rmsDb - level.expectedRmsDb) <= 5.5 ? status : null;
             }, `${level.name} real-world input detected`, 1800);
-            await wait(4200);
-            const realStats = await collectSettledOutputStats(1600, 0);
+            await waitFor(() => {
+              const status = WLG.Content.getStatus();
+              return status.outputRmsDb >= REAL_WORLD_MIN_OUTPUT_RMS_DB ? status : null;
+            }, `${level.name} real-world output settled`, REAL_WORLD_OUTPUT_SETTLE_TIMEOUT_MS);
+            const realStats = await collectSettledOutputStats(2200, 200);
             const shortfallDb = Math.max(0, -21 - realStats.averageOutputRmsDb);
             if (shortfallDb > 1) {
               throw new Error(

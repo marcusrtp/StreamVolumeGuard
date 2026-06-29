@@ -8,7 +8,7 @@ Sa promesse est simple : réduire les écarts de volume afin qu'un son trop fort
 
 ## Dernière Version
 
-Version actuelle : `0.1.3`.
+Version actuelle : `0.1.4`.
 
 Statut : MVP technique (version minimale viable) prêt pour tests manuels, retours streamers et partage GitHub.
 
@@ -80,7 +80,7 @@ Si tu ne connais pas GitHub, suis exactement ces étapes :
 2. Clique sur la dernière release, par exemple :
 
 ```text
-StreamVolume Guard 0.1.3 - stabilité audio de test
+StreamVolume Guard 0.1.4 - stabilité audio et guides testeurs
 ```
 
 3. Descends jusqu'à la zone `Assets`.
@@ -88,11 +88,11 @@ StreamVolume Guard 0.1.3 - stabilité audio de test
 
 Choisis ce fichier :
 
-- Chrome, Brave ou Edge : `streamvolume-guard-chromium-0.1.3.zip`
-- Firefox desktop : `streamvolume-guard-firefox-0.1.3.zip`
-- Firefox Android : `streamvolume-guard-firefox-android-0.1.3.zip`
-- Safari : `streamvolume-guard-safari-source-0.1.3.zip`
-- Code source complet + toutes les distributions : `streamvolume-guard-project-0.1.3.zip`
+- Chrome, Brave ou Edge : `streamvolume-guard-chromium-0.1.4.zip`
+- Firefox desktop : `streamvolume-guard-firefox-0.1.4.zip`
+- Firefox Android : `streamvolume-guard-firefox-android-0.1.4.zip`
+- Safari : `streamvolume-guard-safari-source-0.1.4.zip`
+- Code source complet + toutes les distributions : `streamvolume-guard-project-0.1.4.zip`
 
 5. Décompresse le zip dans un dossier facile à retrouver, par exemple :
 
@@ -109,14 +109,15 @@ Les zips de release contiennent aussi les fichiers utiles aux testeurs :
 - `docs/streamer-quickstart-60s.md` pour un test rapide avant live ;
 - `docs/bug-report-template.md` pour envoyer un retour propre ;
 - `docs/privacy-policy.md` pour comprendre exactement ce qui est stocké ou non ;
+- `docs/maintenance-checklist.md` pour connaître le contrat audio validé et les commandes de vérification ;
 - `docs/real-platform-test-plan.md` pour valider YouTube, Twitch, TikTok, Kick, Spotify web et Deezer web ;
 - `docs/cross-browser-deployment.md` pour les détails multi-navigateurs.
 
 ## Installation Dans Chrome Ou Brave
 
-Cette méthode marche avec le fichier `streamvolume-guard-chromium-0.1.3.zip`.
+Cette méthode marche avec le fichier `streamvolume-guard-chromium-0.1.4.zip`.
 
-1. Télécharge et décompresse `streamvolume-guard-chromium-0.1.3.zip`.
+1. Télécharge et décompresse `streamvolume-guard-chromium-0.1.4.zip`.
 2. Ouvre Chrome.
 3. Copie ceci dans la barre d'adresse :
 
@@ -163,9 +164,9 @@ node tools/build-targets.js
 
 ### Edge Desktop
 
-Utilise `streamvolume-guard-chromium-0.1.3.zip`.
+Utilise `streamvolume-guard-chromium-0.1.4.zip`.
 
-1. Télécharge et décompresse `streamvolume-guard-chromium-0.1.3.zip`.
+1. Télécharge et décompresse `streamvolume-guard-chromium-0.1.4.zip`.
 2. Ouvre Edge.
 3. Copie ceci dans la barre d'adresse :
 
@@ -183,9 +184,9 @@ chemin vers StreamVolume Guard décompressé
 
 ### Firefox Desktop
 
-Utilise `streamvolume-guard-firefox-0.1.3.zip`.
+Utilise `streamvolume-guard-firefox-0.1.4.zip`.
 
-1. Télécharge et décompresse `streamvolume-guard-firefox-0.1.3.zip`.
+1. Télécharge et décompresse `streamvolume-guard-firefox-0.1.4.zip`.
 2. Ouvre Firefox.
 3. Copie ceci dans la barre d'adresse :
 
@@ -204,11 +205,11 @@ Important : cette installation Firefox est temporaire pour les tests. Pour une i
 
 ### Firefox Android
 
-Utilise `streamvolume-guard-firefox-android-0.1.3.zip`.
+Utilise `streamvolume-guard-firefox-android-0.1.4.zip`.
 
 Firefox Android demande plus de manipulations qu'un navigateur desktop. Ce build est fourni pour les tests avancés sur vrai téléphone.
 
-1. Télécharge et décompresse `streamvolume-guard-firefox-android-0.1.3.zip`.
+1. Télécharge et décompresse `streamvolume-guard-firefox-android-0.1.4.zip`.
 2. Utilise le dossier décompressé comme source d'extension.
 3. Vérifie le build avec `web-ext lint` si `web-ext` est installé :
 
@@ -220,7 +221,7 @@ web-ext lint --source-dir "chemin vers StreamVolume Guard décompressé"
 
 ### Safari macOS Et iOS/iPadOS
 
-Utilise `streamvolume-guard-safari-source-0.1.3.zip`.
+Utilise `streamvolume-guard-safari-source-0.1.4.zip`.
 
 Ce zip est une source préparée, pas une extension Safari prête à double-cliquer. Safari demande un Mac et Xcode.
 
@@ -275,6 +276,16 @@ Guide complet :
 docs/cross-browser-deployment.md
 ```
 
+## Contrat De Stabilite
+
+La base audio validee est documentee ici :
+
+```text
+docs/maintenance-checklist.md
+```
+
+Ce fichier fige les niveaux de test, les criteres d'egalisation, les fichiers critiques et les commandes a lancer avant de dire que le pipeline audio est stable.
+
 ## Politique De Confidentialité
 
 La politique complète est disponible ici :
@@ -304,9 +315,9 @@ C'est plus fiable que l'ouverture directe de `test-page.html`, car les pages `fi
 
 La page de test crée un vrai élément `audio` basé sur un WAV local. Les boutons `Son faible`, `Son fort` et `Son très fort` restent volontairement dans un seul bloc pour tester rapidement les écarts sans complexifier l'interface.
 
-Les trois niveaux gardent une vraie différence audible : `Son faible` vise environ `-63.0 dB`, `Son fort` vise environ `-43.0 dB`, et `Son très fort` vise environ `-3.0 dB`. Le très fort est volontairement beaucoup plus haut que le fort pour que l'écart soit net à l'oreille. Quand l'extension est active sur cet onglet, le bloc `Résultats extension` affiche en direct la cible, le gain appliqué, le RMS brut, la sortie estimée, le risque et les médias traités.
+Les trois niveaux gardent une vraie différence audible en brut : `Son faible` vise environ `-63.0 dB RMS`, `Son fort` vise environ `-43.0 dB RMS`, et `Son très fort` vise environ `-4.0 dB RMS`. Le très fort garde environ `-1 dB` de marge sous le pic numérique maximum pour rester puissant sans grésiller. Quand l'extension est active sur cet onglet, ces mêmes sons doivent finir presque au même volume, autour de `-21 dB RMS` et `-18 dB Peak OBS estimé` avec le profil Stream.
 
-Pour une démo simple, commence par `Démo avant / après` : `Avant brut` contourne volontairement le traitement pour faire entendre les vrais écarts, puis `Avec extension` joue les mêmes niveaux avec le traitement actif.
+Pour une démo simple, commence par `Démo avant / après` : `Avant brut` contourne volontairement le traitement pour faire entendre les vrais écarts, puis `Avec extension` joue les mêmes niveaux avec le traitement actif. Si l'extension est active et que les trois sons semblent proches, c'est le comportement attendu.
 
 Important : le profil Stream garde une limite de sécurité sur la réduction forte, mais le boost maximum par défaut monte à `+48 dB` pour que `Son faible` reste récupérable sur la page de test sans modifier les niveaux bruts.
 

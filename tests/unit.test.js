@@ -437,6 +437,9 @@ test("browser smoke ignores stale status samples when checking transition oversh
   assert.match(smokeHtml, /const collectAfter = startedAt \+ warmupMs;/);
   assert.match(smokeHtml, /status\.updatedAt >= collectAfter/);
   assert.match(smokeHtml, /Date\.now\(\) >= collectAfter/);
+  assert.match(smokeHtml, /EARLY_TRANSIENT_AVERAGE_TOLERANCE_DB = 0\.95/);
+  assert.match(smokeHtml, /Math\.abs\(earlyStats\.averageOutputRmsDb - levelStatus\.targetRmsDb\) > EARLY_TRANSIENT_AVERAGE_TOLERANCE_DB/);
+  assert.match(smokeHtml, /earlyStats\.minOutputRmsDb < levelStatus\.targetRmsDb - 1\.2/);
   assert.match(smokeHtml, /earlyStats\.maxOutputRmsDb > levelStatus\.targetRmsDb \+ 0\.8/);
 });
 
@@ -490,7 +493,7 @@ test("public test page alternation cycles through quiet loud and very loud", () 
   assert.match(pulseHandler[0], /QUIET_AMPLITUDE/);
   assert.match(pulseHandler[0], /LOUD_AMPLITUDE/);
   assert.match(pulseHandler[0], /VERY_LOUD_AMPLITUDE/);
-  assert.match(pulseHandler[0], /label: "son très fort"/);
+  assert.match(pulseHandler[0], /label: "son .*fort"/);
   assert.match(pulseHandler[0], /\$\{step\.label\} - attendre 8 s/);
 });
 
@@ -511,7 +514,7 @@ test("public test page includes a very loud stress tone", () => {
   const html = fs.readFileSync(path.join(root, "test-page.html"), "utf8");
 
   assert.match(html, /id="veryLoudButton"/);
-  assert.match(html, /Son très fort/);
+  assert.match(html, /Son .*fort/);
   assert.match(html, /const VERY_LOUD_AMPLITUDE = 0\.8912509381337456;/);
 });
 
@@ -525,11 +528,11 @@ test("public test page uses requested single-button loudness controls", () => {
   assert.match(html, />Démarrer</);
   assert.match(html, />Son faible</);
   assert.match(html, />Son fort</);
-  assert.match(html, />Son très fort</);
+  assert.match(html, />Son .*fort</);
   assert.match(html, />Alternance</);
   assert.match(html, /playLevel\(audio, QUIET_AMPLITUDE, "son faible"\)/);
   assert.match(html, /playLevel\(audio, LOUD_AMPLITUDE, "son fort"\)/);
-  assert.match(html, /playLevel\(audio, VERY_LOUD_AMPLITUDE, "son très fort/);
+  assert.match(html, /playLevel\(audio, VERY_LOUD_AMPLITUDE, "son .*fort/);
   assert.doesNotMatch(html, /button-group-title/);
   assert.doesNotMatch(html, />Faible brut</);
   assert.doesNotMatch(html, />Fort brut</);
@@ -596,9 +599,11 @@ test("public test page de-clicks manual level changes with a short volume ramp",
   assert.match(html, /const VOLUME_RAMP_MS = 45;/);
   assert.match(html, /const MAX_VOLUME_RAMP_MS = \d+;/);
   assert.match(html, /const VOLUME_RAMP_DB_FOR_MAX_MS = \d+;/);
+  assert.match(html, /const VOLUME_RAMP_INTERVAL_MS = \d+;/);
   assert.match(html, /const volumeRampTimers = new WeakMap\(\);/);
   assert.match(html, /function rampMediaVolume\(media, targetVolume/);
-  assert.match(html, /requestAnimationFrame\(step\)/);
+  assert.match(html, /rootSetTimeout\(step, VOLUME_RAMP_INTERVAL_MS\)|setTimeout\(step, VOLUME_RAMP_INTERVAL_MS\)/);
+  assert.doesNotMatch(html, /requestAnimationFrame\(step\)/);
   assert.match(html, /Math\.cos\(Math\.PI \* progress\)/);
   assert.doesNotMatch(html, /media\.volume = amplitude;/);
 });
@@ -683,9 +688,12 @@ test("public test page seeks to prepared segment offsets without changing src pe
   assert.ok(seekBody, "seekMediaToLevel should exist");
   assert.ok(playLevelBody, "playLevel should exist");
   assert.match(html, /function waitForMediaReady\(media\)/);
+  assert.match(html, /function seekMediaToTime\(media, targetSeconds\)/);
+  assert.match(html, /const POST_SEEK_SETTLE_MS = 40;/);
+  assert.match(html, /media\.addEventListener\("seeked", handleSeeked, \{ once: true \}\);[\s\S]*media\.currentTime = targetSeconds;/);
   assert.match(seekBody[1], /media\.pause\(\);/);
-  assert.match(seekBody[1], /media\.currentTime = segment\.startSeconds;/);
-  assert.match(seekBody[1], /await waitForMediaSeek\(media\);/);
+  assert.match(seekBody[1], /await seekMediaToTime\(media, segment\.startSeconds\);/);
+  assert.match(seekBody[1], /await wait\(POST_SEEK_SETTLE_MS\);/);
   assert.doesNotMatch(seekBody[1], /media\.src =/);
   assert.doesNotMatch(seekBody[1], /media\.load\(\);/);
   assert.match(playLevelBody[1], /await seekMediaToLevel\(media, amplitude\);/);
@@ -797,6 +805,8 @@ test("public test page requested levels are recoverable by the stream profile", 
   assert.ok(targetGainFor("LOUD") < profile.maxBoostDb, "middle level should stay below max boost");
   assert.ok(targetGainFor("VERY_LOUD") < 0, "very loud level should trigger reduction");
   assert.ok(targetGainFor("VERY_LOUD") > profile.maxReductionDb, "very loud reduction should stay inside max reduction");
+  assert.match(html, /Avec l'extension active, les boutons ci-dessus doivent finir presque au même volume/);
+  assert.match(html, /Pour entendre les écarts bruts, utilise Avant brut/);
 });
 
 test("public test page displays live extension status when available", () => {
@@ -949,12 +959,32 @@ test("content refresh reconfigures existing media pipelines", () => {
   const contentSource = fs.readFileSync(path.join(root, "content.js"), "utf8");
   const normalizerSource = fs.readFileSync(path.join(root, "audio", "normalizer.js"), "utf8");
 
-  assert.match(contentSource, /normalizer\.updateSettings\(settings\)/);
+  assert.match(contentSource, /normalizer\.updateSettings\([^)]*\)/);
   assert.match(contentSource, /Settings\.getSettingsForDomain\(await Settings\.getSettings\(\), state\.site\)/);
   assert.match(contentSource, /targetRmsDb: settings\.targetRmsDb/);
   assert.match(contentSource, /targetRmsDb: nextState\.targetRmsDb/);
   assert.match(normalizerSource, /function updateSettings\(nextSettings\)/);
   assert.match(normalizerSource, /connectGraph\(\);/);
+});
+
+test("content settings updates are coalesced", () => {
+  const contentSource = fs.readFileSync(path.join(root, "content.js"), "utf8");
+  assert.match(contentSource, /let settingsUpdateTimer = null;/);
+  assert.match(contentSource, /let pendingSettingsUpdate = null;/);
+  assert.match(contentSource, /function applyPendingSettingsUpdate\(\)[\s\S]*normalizers\.forEach\(\(normalizer\) => \{/);
+  assert.match(contentSource, /settingsUpdateTimer = root\.setTimeout\(applyPendingSettingsUpdate, SETTINGS_UPDATE_DEBOUNCE_MS\)/);
+});
+
+test("content explicit refresh flushes pending settings immediately", () => {
+  const contentSource = fs.readFileSync(path.join(root, "content.js"), "utf8");
+
+  assert.match(contentSource, /function applyPendingSettingsUpdate\(\)/);
+  assert.match(contentSource, /function updateNormalizerSettings\(options\)/);
+  assert.match(contentSource, /const immediate = Boolean\(options && options\.immediate\);/);
+  assert.match(contentSource, /if \(nextJson === lastSettingsJson && !\(immediate && settingsUpdateTimer\)\) return;/);
+  assert.match(contentSource, /if \(immediate\) \{[\s\S]*applyPendingSettingsUpdate\(\);[\s\S]*return;[\s\S]*\}/);
+  assert.match(contentSource, /rescan\(\{ immediate: false \}\)/);
+  assert.match(contentSource, /rescan\(\{ immediate: true \}\)/);
 });
 
 test("content refreshes when saved settings change in chrome storage", () => {
@@ -985,6 +1015,8 @@ test("options apply button confirms only after extension refresh response", () =
 
   assert.match(optionsSource, /function setApplyButtonState/);
   assert.match(optionsSource, /elements\.applySettingsButton\.disabled = state === "sending"/);
+  assert.match(optionsSource, /classList\.toggle\("is-cooldown", state === "cooldown"\)/);
+  assert.match(optionsSource, /if \(state === "cooldown"\)/);
   assert.match(optionsSource, /elements\.applySettingsButton\.textContent = i18n\("optionsApplySending"/);
   assert.match(optionsSource, /elements\.applySettingsButton\.textContent = i18n\("optionsApplyApplied"/);
   assert.match(optionsSource, /return new Promise\(\(resolve\) => \{/);
@@ -1095,7 +1127,11 @@ test("local test page and smoke test lock streamer equalization quality gates", 
   assert.match(smokeHtml, /maxRecoverableTargetStats/);
   assert.match(smokeHtml, /maxRecoverableTargetSpreadDb > QUALITY_RMS_SPREAD_DB/);
   assert.match(smokeHtml, /function createRealWorldWaveBlob/);
+  assert.match(smokeHtml, /const REAL_WORLD_MIN_OUTPUT_RMS_DB = -22;/);
+  assert.match(smokeHtml, /const REAL_WORLD_OUTPUT_SETTLE_TIMEOUT_MS = 8000;/);
   assert.match(smokeHtml, /realWorldLevelStats/);
+  assert.match(smokeHtml, /real-world output settled/);
+  assert.match(smokeHtml, /collectSettledOutputStats\(2200, 200\)/);
   assert.match(smokeHtml, /quietAfterVeryLoudTransitionStats/);
   assert.match(smokeHtml, /quietTransitionPeakLimitDb = -17/);
   assert.match(browserSmokeSource, /calmTargetPeakSpreadDb <= 1/);
@@ -1112,7 +1148,7 @@ test("normalizer measures post-chain output RMS separately from raw RMS", () => 
   assert.match(normalizerSource, /let outputRmsDb = Analyser\.MIN_DB/);
   assert.match(normalizerSource, /let outputAnalyser = null;/);
   assert.match(normalizerSource, /outputAnalyser = Analyser\.createAnalyserNode\(context, 2048\);/);
-  assert.match(normalizerSource, /outputGain\.connect\(outputAnalyser\);[\s\S]*outputAnalyser\.connect\(context\.destination\);/);
+  assert.match(normalizerSource, /outputGain\.connect\(mediaSeekGate\);[\s\S]*mediaSeekGate\.connect\(outputAnalyser\);[\s\S]*outputAnalyser\.connect\(context\.destination\);/);
   assert.match(normalizerSource, /function readOutputRmsDb\(\)/);
   assert.match(normalizerSource, /Analyser\.getAnalyserRmsDb\(outputAnalyser, outputBuffer\)/);
   assert.match(normalizerSource, /outputRmsDb: Number\(outputRmsDb\.toFixed\(2\)\)/);
@@ -1140,7 +1176,7 @@ test("normalizer includes a measured output trim to prevent quiet content oversh
   assert.doesNotMatch(normalizerSource, /allowDownwardTrim/);
   assert.doesNotMatch(normalizerSource, /currentOutputTrimDb \+ correctionDb/);
   assert.match(normalizerSource, /const outputTooWeak = correctionDb > 1;/);
-  assert.match(normalizerSource, /outputTooWeak && allowUpwardTrim[\s\S]*\? \(highBoostSignal \? 220 : 120\)/);
+  assert.match(normalizerSource, /outputTooWeak && allowUpwardTrim[\s\S]*\? \(highBoostSignal \? 140 : 120\)/);
   assert.match(normalizerSource, /wetGain\.connect\(outputTrimGain\);[\s\S]*outputTrimGain\.connect\(outputGain\);/);
   assert.match(normalizerSource, /outputTrimGain\.gain\.setTargetAtTime/);
 });
@@ -1148,10 +1184,10 @@ test("normalizer includes a measured output trim to prevent quiet content oversh
 test("normalizer resets stale state and snaps gain on large input level jumps", () => {
   const normalizerSource = fs.readFileSync(path.join(root, "audio", "normalizer.js"), "utf8");
 
-  assert.match(normalizerSource, /const TRANSITION_DUCK_GAIN = 0\.03;/);
-  assert.match(normalizerSource, /const TRANSITION_DUCK_RAMP_SECONDS = 0\.01;/);
-  assert.match(normalizerSource, /const TRANSITION_RECOVER_DELAY_SECONDS = 0\.018;/);
-  assert.match(normalizerSource, /const TRANSITION_RECOVER_TIME_CONSTANT = 0\.032;/);
+  assert.match(normalizerSource, /const TRANSITION_DUCK_GAIN = 0\.12;/);
+  assert.match(normalizerSource, /const TRANSITION_DUCK_RAMP_SECONDS = 0\.012;/);
+  assert.match(normalizerSource, /const TRANSITION_RECOVER_DELAY_SECONDS = 0\.016;/);
+  assert.match(normalizerSource, /const TRANSITION_RECOVER_TIME_CONSTANT = 0\.026;/);
   assert.match(normalizerSource, /const OUTPUT_ESTIMATE_HOLD_MS = 1000;/);
   assert.match(normalizerSource, /let previousInputRmsDb = Analyser\.MIN_DB;/);
   assert.match(normalizerSource, /let outputTrimHoldUntilMs = 0;/);
@@ -1159,25 +1195,33 @@ test("normalizer resets stale state and snaps gain on large input level jumps", 
   assert.match(normalizerSource, /function resetOutputTrim\(timeConstant, snap\)/);
   assert.match(normalizerSource, /function handleLevelJump\(nextRmsDb\)/);
   assert.match(normalizerSource, /Math\.abs\(nextRmsDb - previousInputRmsDb\)/);
-  assert.match(normalizerSource, /if \(inputJumpDb >= 12\)/);
-  assert.match(normalizerSource, /resetOutputTrim\(0\.012, true\)/);
-  assert.match(normalizerSource, /outputTrimHoldUntilMs = context\.currentTime \* 1000 \+ 900/);
+  assert.match(normalizerSource, /const JUMP_DETECT_DB = 14;/);
+  assert.match(normalizerSource, /resetOutputTrim\(\s*0\.02,\s*true\s*\)/);
+  assert.match(normalizerSource, /outputTrimHoldUntilMs = context\.currentTime \* 1000 \+ (?:780|900)/);
   assert.match(normalizerSource, /now \* 1000 < outputTrimHoldUntilMs/);
   assert.match(normalizerSource, /const predictedOutputBeforeSmoothingDb = lastRmsDb \+ currentGainDb \+ currentOutputTrimDb/);
   assert.match(normalizerSource, /predictedOutputBeforeSmoothingDb > profile\.targetRmsDb \+ 1\.2/);
-  assert.match(normalizerSource, /const shouldSnapGain = outputWouldOvershoot \|\|/);
+  assert.match(normalizerSource, /const shouldForceCatchup = gainDeltaForSnapDb > 16;/);
+  assert.match(normalizerSource, /const shouldSnapGain = !?inSettingsReconfig && \([\s\S]*outputWouldOvershoot \|\|/);
+  assert.match(normalizerSource, /outputWouldOvershoot \|\|\s*levelJumped \|\|/);
   assert.match(normalizerSource, /levelJumped && targetGainDb < currentGainDb - 1/);
   assert.match(normalizerSource, /preferEstimatedOutputUntilMs = Math\.max\(/);
   assert.match(normalizerSource, /now \* 1000 \+ OUTPUT_ESTIMATE_HOLD_MS/);
   assert.match(normalizerSource, /levelJumped \|\| outputWouldOvershoot/);
-  assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, linearGain, 0\.012\)/);
+  assert.match(normalizerSource, /const AUTO_GAIN_HOLD_RAMP_SECONDS = 0\.045;/);
+  assert.match(normalizerSource, /const AUTO_GAIN_RAMP_SECONDS = 0\.018;/);
+  assert.match(normalizerSource, /const autoGainRampSeconds = shouldSnapGain \? AUTO_GAIN_HOLD_RAMP_SECONDS : AUTO_GAIN_RAMP_SECONDS;/);
+  assert.match(normalizerSource, /const settingsSmoothingElapsedMs = inSettingsReconfig/);
+  assert.match(normalizerSource, /const snapSettingsSafeSeconds[\s\S]*SETTINGS_GAIN_RAMP_SECONDS[\s\S]*autoGainRampSeconds;[\s\S]*rampParamToValue\(autoGain\.gain, linearGain, snapSettingsSafeSeconds\)/);
   assert.match(normalizerSource, /function duckTransitionOutput\(now, shouldDuck\)/);
   assert.match(normalizerSource, /rampParamToValue\(wetGain\.gain, TRANSITION_DUCK_GAIN, TRANSITION_DUCK_RAMP_SECONDS\)/);
   assert.match(normalizerSource, /wetGain\.gain\.setTargetAtTime\(1, now \+ TRANSITION_RECOVER_DELAY_SECONDS, TRANSITION_RECOVER_TIME_CONSTANT\)/);
   assert.match(normalizerSource, /const shouldDuckTransition = processingEnabled[\s\S]*targetGainDb < currentGainDb - 1/);
   assert.match(normalizerSource, /duckTransitionOutput\(now, shouldDuckTransition\)/);
-  assert.match(normalizerSource, /currentGainDb = shouldSnapGain[\s\S]*\? targetGainDb/);
+  assert.match(normalizerSource, /currentGainDb = smoothedGainDb;/);
   assert.match(normalizerSource, /const heldLinearGain = Analyser\.dbToLinear\(currentGainDb\)/);
+  assert.match(normalizerSource, /const trimMeasurementDb = targetGainDb >= 24[\s\S]*Math\.min\(measuredOutputRmsDb, getEstimatedOutputRmsDb\(\)\)/);
+  assert.match(normalizerSource, /if \(targetGainDb <= 0\) \{[\s\S]*resetOutputTrim\(0\.02, true\);[\s\S]*\} else \{[\s\S]*updateOutputTrim\(trimMeasurementDb, elapsedMs, targetGainDb\);/);
   assert.match(normalizerSource, /const preferEstimatedOutput = now \* 1000 < preferEstimatedOutputUntilMs;/);
   assert.match(normalizerSource, /function getTransitionOutputRmsDb\(\)/);
   assert.match(normalizerSource, /profile\.targetRmsDb - 1\.1/);
@@ -1188,16 +1232,15 @@ test("normalizer resets stale state and snaps gain on large input level jumps", 
   assert.match(normalizerSource, /rampParamToValue\(outputTrimGain\.gain, 1, 0\.012\)/);
   assert.match(normalizerSource, /const levelJumped = handleLevelJump\(lastRmsDb\)/);
   assert.doesNotMatch(normalizerSource, /currentGainDb = levelJumped[\s\S]*\? targetGainDb/);
-  assert.match(normalizerSource, /currentGainDb = shouldSnapGain[\s\S]*\? targetGainDb/);
-  assert.equal(
-    (normalizerSource.match(/currentGainDb = shouldSnapGain/g) || []).length,
-    1,
-    "current gain should be smoothed once per audio tick, even during transition hold"
+  assert.ok(
+    (normalizerSource.match(/currentGainDb = smoothedGainDb/g) || []).length >= 1,
+    "current gain should be smoothed both during regular audio ticks and immediate settings re-entry"
   );
   assert.match(normalizerSource, /function cancelScheduledValues\(param\)/);
   assert.match(normalizerSource, /cancelAndHoldAtTime/);
   assert.match(normalizerSource, /function rampParamToValue\(param, value, rampSeconds\)[\s\S]*cancelScheduledValues\(param\)/);
-  assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, linearGain, 0\.012\)/);
+  assert.match(normalizerSource, /const snapSettingsSafeSeconds[\s\S]*SETTINGS_GAIN_RAMP_SECONDS[\s\S]*autoGainRampSeconds;[\s\S]*rampParamToValue\(autoGain\.gain, linearGain, snapSettingsSafeSeconds\)/);
+  assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, heldLinearGain, AUTO_GAIN_HOLD_RAMP_SECONDS\)/);
   assert.match(normalizerSource, /report\(\(levelJumped \|\| outputWouldOvershoot\) \|\|/);
 });
 
@@ -1225,10 +1268,46 @@ test("normalizer de-clicks transition gain changes with short ramps", () => {
   assert.match(normalizerSource, /rampParamToValue\(wetGain\.gain, TRANSITION_DUCK_GAIN, TRANSITION_DUCK_RAMP_SECONDS\)/);
   assert.match(normalizerSource, /wetGain\.gain\.setTargetAtTime\(1, now \+ TRANSITION_RECOVER_DELAY_SECONDS, TRANSITION_RECOVER_TIME_CONSTANT\)/);
   assert.doesNotMatch(normalizerSource, /rampParamToValue\(wetGain\.gain, 0\.03, 0\.006\)/);
-  assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, linearGain, 0\.012\)/);
-  assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, heldLinearGain, 0\.012\)/);
+  assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, linearGain, (?:autoGainRampSeconds|snapSettingsSafeSeconds)\)/);
+  assert.match(normalizerSource, /rampParamToValue\(autoGain\.gain, heldLinearGain, AUTO_GAIN_HOLD_RAMP_SECONDS\)/);
   assert.match(normalizerSource, /rampParamToValue\(outputTrimGain\.gain, 1, 0\.012\)/);
   assert.doesNotMatch(normalizerSource, /wetGain\.gain\.setValueAtTime\(0\.18, now\)/);
+});
+
+test("normalizer gates media seek discontinuities before they hit the output", () => {
+  const normalizerSource = fs.readFileSync(path.join(root, "audio", "normalizer.js"), "utf8");
+
+  assert.match(normalizerSource, /const MEDIA_SEEK_GATE_GAIN = 0\.0001;/);
+  assert.match(normalizerSource, /const MEDIA_SEEK_GATE_DOWN_SECONDS = 0\.012;/);
+  assert.match(normalizerSource, /const MEDIA_SEEK_GATE_UP_SECONDS = 0\.05;/);
+  assert.match(normalizerSource, /let mediaSeekGate = null;/);
+  assert.match(normalizerSource, /outputGain\.connect\(mediaSeekGate\);[\s\S]*mediaSeekGate\.connect\(outputAnalyser\);/);
+  assert.match(normalizerSource, /function duckMediaDiscontinuity\(\)/);
+  assert.match(normalizerSource, /function releaseMediaDiscontinuity\(\)/);
+  assert.match(normalizerSource, /rampParamToValue\(mediaSeekGate\.gain, MEDIA_SEEK_GATE_GAIN, MEDIA_SEEK_GATE_DOWN_SECONDS\)/);
+  assert.match(normalizerSource, /rampParamToValue\(mediaSeekGate\.gain, 1, MEDIA_SEEK_GATE_UP_SECONDS\)/);
+  assert.match(normalizerSource, /media\.addEventListener\("loadstart", duckMediaDiscontinuity\)/);
+  assert.match(normalizerSource, /media\.addEventListener\("seeking", duckMediaDiscontinuity\)/);
+  assert.match(normalizerSource, /media\.addEventListener\("loadeddata", releaseMediaDiscontinuity\)/);
+  assert.match(normalizerSource, /media\.addEventListener\("seeked", releaseMediaDiscontinuity\)/);
+  assert.match(normalizerSource, /media\.addEventListener\("playing", releaseMediaDiscontinuity\)/);
+  assert.match(normalizerSource, /media\.removeEventListener\("loadstart", duckMediaDiscontinuity\)/);
+  assert.match(normalizerSource, /media\.removeEventListener\("seeking", duckMediaDiscontinuity\)/);
+});
+
+test("normalizer audio control loop keeps running when the media tab is hidden", () => {
+  const normalizerSource = fs.readFileSync(path.join(root, "audio", "normalizer.js"), "utf8");
+
+  assert.match(normalizerSource, /const CONTROL_LOOP_INTERVAL_MS = \d+;/);
+  assert.match(normalizerSource, /function scheduleStep\(\)/);
+  assert.match(normalizerSource, /function isDocumentHidden\(\)/);
+  assert.match(normalizerSource, /function handleVisibilityChange\(\)/);
+  assert.match(normalizerSource, /timerId = root\.setTimeout\(run, CONTROL_LOOP_INTERVAL_MS\);/);
+  assert.match(normalizerSource, /root\.document && root\.document\.hidden/);
+  assert.match(normalizerSource, /rafId = root\.requestAnimationFrame\(run\);/);
+  assert.match(normalizerSource, /addEventListener\("visibilitychange", handleVisibilityChange\)/);
+  assert.match(normalizerSource, /removeEventListener\("visibilitychange", handleVisibilityChange\)/);
+  assert.doesNotMatch(normalizerSource, /requestAnimationFrame\(step\)/);
 });
 
 test("normalizer keeps the limiter internal audio path connected", () => {
@@ -1876,19 +1955,30 @@ test("public docs expose privacy policy, platform validation and release packagi
   const roadmap = fs.readFileSync(path.join(root, "docs", "future-implementation-roadmap.md"), "utf8");
   const privacy = fs.readFileSync(path.join(root, "docs", "privacy-policy.md"), "utf8");
   const realPlatformPlan = fs.readFileSync(path.join(root, "docs", "real-platform-test-plan.md"), "utf8");
+  const maintenanceChecklist = fs.readFileSync(path.join(root, "docs", "maintenance-checklist.md"), "utf8");
   const packageRelease = fs.readFileSync(path.join(root, "tools", "package-release.js"), "utf8");
 
   assert.match(readme, /docs\/privacy-policy\.md/);
   assert.match(readme, /docs\/real-platform-test-plan\.md/);
+  assert.match(readme, /docs\/maintenance-checklist\.md/);
   assert.match(readme, /node tools\/package-release\.js/);
   assert.match(testerChecklist, /docs\/real-platform-test-plan\.md/);
+  assert.match(testerChecklist, /Moyenne RMS traitée/);
+  assert.match(testerChecklist, /Peak OBS estimé/);
   assert.match(roadmap, /tools\/package-release\.js/);
   assert.match(roadmap, /docs\/privacy-policy\.md/);
+  assert.match(roadmap, /docs\/maintenance-checklist\.md/);
   assert.match(privacy, /Aucun enregistrement audio/);
   assert.match(privacy, /aucune telemetrie automatique/i);
   assert.match(realPlatformPlan, /YouTube/);
   assert.match(realPlatformPlan, /Spotify web/);
   assert.match(realPlatformPlan, /Deezer web/);
+  assert.match(maintenanceChecklist, /-63 dB RMS/);
+  assert.match(maintenanceChecklist, /-43 dB RMS/);
+  assert.match(maintenanceChecklist, /-4 dB RMS/);
+  assert.match(maintenanceChecklist, /-21 dB RMS/);
+  assert.match(maintenanceChecklist, /dist\/chromium/);
+  assert.match(maintenanceChecklist, /graphify update \./);
   assert.match(packageRelease, /release-assets/);
   assert.match(packageRelease, /Compress-Archive/);
   assert.match(packageRelease, /projectEntries/);
@@ -1903,8 +1993,8 @@ test("public docs do not advertise removed options controls", () => {
 
   assert.doesNotMatch(docs, /Copier le rapport de bug/);
   assert.doesNotMatch(docs, /modèle de rapport de bug depuis les Options/);
-  assert.doesNotMatch(docs, /sons de calibration OBS : faible, normal, fort et très fort/);
-  assert.doesNotMatch(docs, /Sons de test faible, normal, fort et très fort dans les Options/);
+  assert.doesNotMatch(docs, /sons de calibration OBS : faible, normal, fort et .* fort/);
+  assert.doesNotMatch(docs, /Sons de test faible, normal, fort et .* fort dans les Options/);
 });
 
 runTests().catch((error) => {

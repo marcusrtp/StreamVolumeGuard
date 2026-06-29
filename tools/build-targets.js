@@ -53,6 +53,7 @@ const PACKAGE_ENTRIES = [
 const USER_DOC_ENTRIES = [
   "bug-report-template.md",
   "cross-browser-deployment.md",
+  "maintenance-checklist.md",
   "privacy-policy.md",
   "real-platform-test-plan.md",
   "streamer-quickstart-60s.md",

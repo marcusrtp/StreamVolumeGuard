@@ -94,6 +94,7 @@ const publicTextFiles = [
   "_locales/fr/messages.json",
   "popup/popup.html",
   "options/options.html",
+  "options/options.js",
   "test-page.html"
 ];
 

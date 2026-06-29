@@ -36,6 +36,7 @@ const requiredFiles = [
   "test-page.html",
   "docs/bug-report-template.md",
   "docs/cross-browser-deployment.md",
+  "docs/maintenance-checklist.md",
   "docs/privacy-policy.md",
   "docs/real-platform-test-plan.md",
   "docs/streamer-quickstart-60s.md",

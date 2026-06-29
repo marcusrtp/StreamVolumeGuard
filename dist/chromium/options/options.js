@@ -26,6 +26,11 @@
     exportDiagnosticsButton: document.getElementById("exportDiagnosticsButton")
   };
   let targetPreview = null;
+  const APPLY_BUTTON_DEBOUNCE_MS = 1200;
+  const APPLY_BUTTON_APPLIED_HOLD_MS = 900;
+  let saveInProgress = false;
+  let applyDebounceUntil = 0;
+  let applyCooldownTimer = null;
 
   function i18n(key, fallback) {
     if (root.chrome && chrome.i18n && chrome.i18n.getMessage) {
@@ -94,11 +99,36 @@
   }
 
   function setApplyButtonState(state) {
-    elements.applySettingsButton.disabled = state === "sending";
+    if (applyCooldownTimer !== null && state !== "cooldown") {
+      root.clearTimeout(applyCooldownTimer);
+      applyCooldownTimer = null;
+    }
+
+    elements.applySettingsButton.classList.toggle("is-cooldown", state === "cooldown");
     elements.applySettingsButton.dataset.applyState = state;
+    elements.applySettingsButton.disabled = state === "sending" || state === "cooldown" || state === "applied";
 
     if (state === "sending") {
       elements.applySettingsButton.textContent = i18n("optionsApplySending", "Envoi...");
+      return;
+    }
+
+    if (state === "cooldown") {
+      elements.applySettingsButton.disabled = true;
+      const remainingMs = Math.max(0, applyDebounceUntil - Date.now());
+      const seconds = (remainingMs / 1000).toFixed(1);
+      const baseLabel = i18n("optionsApplyCooldown", "Patientez");
+
+      elements.applySettingsButton.textContent = `${baseLabel} (${seconds}s)`;
+
+      if (remainingMs > 0) {
+        applyCooldownTimer = root.setTimeout(() => {
+          setApplyButtonState(canSubmitNow() ? "idle" : "cooldown");
+        }, 100);
+      } else {
+        setApplyButtonState("idle");
+      }
+
       return;
     }
 
@@ -112,7 +142,16 @@
       return;
     }
 
+    elements.applySettingsButton.disabled = false;
     elements.applySettingsButton.textContent = i18n("optionsApplyIdle", "Appliquer les réglages");
+  }
+
+  function canSubmitNow() {
+    return !saveInProgress && Date.now() >= applyDebounceUntil;
+  }
+
+  function armApplyDebounce() {
+    applyDebounceUntil = Date.now() + APPLY_BUTTON_DEBOUNCE_MS;
   }
 
   function refreshOpenTabs() {
@@ -674,6 +713,15 @@
   }
 
   async function saveFromForm() {
+    if (!canSubmitNow()) {
+      setApplyButtonState("cooldown");
+      setSaveState(i18n("optionsApplyDebounceStatus", "Patientez avant de valider"));
+      return;
+    }
+
+    const startedAt = Date.now();
+    saveInProgress = true;
+    armApplyDebounce();
     const nextSettings = settingsFromForm();
 
     setApplyButtonState("sending");
@@ -700,12 +748,18 @@
     } catch (error) {
       setApplyButtonState("error");
       setSaveState(i18n("optionsSaveErrorStatus", "sauvegarde impossible"));
+    } finally {
+      saveInProgress = false;
     }
 
+    const elapsedMs = Date.now() - startedAt;
+    const restoreDelay = Math.max(APPLY_BUTTON_APPLIED_HOLD_MS, APPLY_BUTTON_DEBOUNCE_MS - elapsedMs);
+    applyDebounceUntil = Date.now() + restoreDelay;
+    setApplyButtonState("cooldown");
     root.setTimeout(() => {
       setApplyButtonState("idle");
       setSaveState("prêt");
-    }, 1600);
+    }, restoreDelay);
   }
 
   elements.activeProfile.addEventListener("change", () => {

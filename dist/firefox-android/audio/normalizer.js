@@ -4,12 +4,26 @@
   const Settings = WLG.Settings;
   const Limiter = WLG.Limiter;
   const StreamStatus = WLG.StreamStatus;
-  const TRANSITION_DUCK_GAIN = 0.03;
-  const TRANSITION_DUCK_RAMP_SECONDS = 0.01;
-  const TRANSITION_RECOVER_DELAY_SECONDS = 0.018;
-  const TRANSITION_RECOVER_TIME_CONSTANT = 0.032;
+  const TRANSITION_DUCK_GAIN = 0.12;
+  const TRANSITION_DUCK_RAMP_SECONDS = 0.012;
+  const TRANSITION_RECOVER_DELAY_SECONDS = 0.016;
+  const TRANSITION_RECOVER_TIME_CONSTANT = 0.026;
   const OUTPUT_TRIM_DEADBAND_DB = 0.06;
   const OUTPUT_ESTIMATE_HOLD_MS = 1000;
+  const JUMP_OUTPUT_ESTIMATE_HOLD_MS = 1700;
+  const JUMP_OUTPUT_TRIM_HOLD_MS = 1400;
+  const AUTO_GAIN_HOLD_RAMP_SECONDS = 0.045;
+  const AUTO_GAIN_RAMP_SECONDS = 0.018;
+  const SETTINGS_GAIN_RAMP_SECONDS = AUTO_GAIN_RAMP_SECONDS;
+  const SETTINGS_APPLY_COOLDOWN_MS = 950;
+  const JUMP_DETECT_DB = 14;
+  const SETTINGS_REENTRY_RAMP_SECONDS = 0.08;
+  const SETTINGS_REENTRY_GRACE_MS = 750;
+  const CONTROL_LOOP_INTERVAL_MS = 100;
+  const MEDIA_SEEK_GATE_GAIN = 0.0001;
+  const MEDIA_SEEK_GATE_DOWN_SECONDS = 0.012;
+  const MEDIA_SEEK_GATE_UP_SECONDS = 0.05;
+  const MEDIA_SEEK_GATE_HOLD_MS = 20;
 
   function calculateTargetGainDb(options) {
     const currentRmsDb = Number(options.currentRmsDb);
@@ -76,6 +90,7 @@
     let wetGain = null;
     let outputTrimGain = null;
     let outputGain = null;
+    let mediaSeekGate = null;
     let outputAnalyser = null;
     let compressor = null;
     let limiter = null;
@@ -85,6 +100,7 @@
 
     let rafId = null;
     let timerId = null;
+    let stepScheduleId = 0;
     let stopped = false;
     let lastTime = context.currentTime;
     let currentGainDb = 0;
@@ -105,6 +121,11 @@
     let processingEnabled = runtimeSettings.enabled;
     let panicActive = false;
     let graphStarted = false;
+    let settingsApplyTimer = null;
+    let pendingSettingsForApply = null;
+    let lastSettingsApplyMs = 0;
+    let settingsReentryUntilMs = 0;
+    let mediaSeekReleaseTimer = null;
 
     function graphNodes() {
       return [
@@ -115,6 +136,7 @@
         wetGain,
         outputTrimGain,
         outputGain,
+        mediaSeekGate,
         outputAnalyser,
         compressor,
         limiter && limiter.output
@@ -145,7 +167,8 @@
       }
       wetGain.connect(outputTrimGain);
       outputTrimGain.connect(outputGain);
-      outputGain.connect(outputAnalyser);
+      outputGain.connect(mediaSeekGate);
+      mediaSeekGate.connect(outputAnalyser);
       outputAnalyser.connect(context.destination);
     }
 
@@ -204,6 +227,7 @@
       wetGain = context.createGain();
       outputTrimGain = context.createGain();
       outputGain = context.createGain();
+      mediaSeekGate = context.createGain();
       outputAnalyser = Analyser.createAnalyserNode(context, 2048);
       outputAnalyser.smoothingTimeConstant = 0.15;
       compressor = context.createDynamicsCompressor();
@@ -216,7 +240,9 @@
       wetGain.gain.value = processingEnabled ? 1 : 0;
       outputTrimGain.gain.value = 1;
       outputGain.gain.value = panicActive ? Analyser.dbToLinear(runtimeSettings.panicGainDb || -30) : 1;
+      mediaSeekGate.gain.value = 1;
       connectGraph();
+      addMediaDiscontinuityListeners();
       graphStarted = true;
     }
 
@@ -248,7 +274,12 @@
     }
 
     function getEstimatedOutputPeakDb() {
-      return processingEnabled ? lastPeakDb + currentGainDb + currentOutputTrimDb : lastPeakDb;
+      const estimatedPeakDb = processingEnabled
+        ? lastPeakDb + currentGainDb + currentOutputTrimDb
+        : lastPeakDb;
+      return processingEnabled
+        ? Analyser.clamp(estimatedPeakDb, profile.targetRmsDb - 1.1, profile.targetRmsDb + 3)
+        : estimatedPeakDb;
     }
 
     function readOutputRmsDb() {
@@ -294,6 +325,85 @@
       wetGain.gain.setTargetAtTime(1, now + TRANSITION_RECOVER_DELAY_SECONDS, TRANSITION_RECOVER_TIME_CONSTANT);
     }
 
+    function clearScheduledStep() {
+      if (rafId && root.cancelAnimationFrame) {
+        root.cancelAnimationFrame(rafId);
+      }
+      if (timerId) {
+        root.clearTimeout(timerId);
+      }
+      rafId = null;
+      timerId = null;
+    }
+
+    function isDocumentHidden() {
+      return Boolean(root.document && root.document.hidden);
+    }
+
+    function scheduleStep() {
+      const scheduleId = ++stepScheduleId;
+
+      function run() {
+        if (stopped || scheduleId !== stepScheduleId) return;
+        clearScheduledStep();
+        step();
+      }
+
+      if (isDocumentHidden() || !root.requestAnimationFrame) {
+        timerId = root.setTimeout(run, CONTROL_LOOP_INTERVAL_MS);
+      } else {
+        rafId = root.requestAnimationFrame(run);
+      }
+    }
+
+    function clearMediaSeekReleaseTimer() {
+      if (!mediaSeekReleaseTimer) return;
+      root.clearTimeout(mediaSeekReleaseTimer);
+      mediaSeekReleaseTimer = null;
+    }
+
+    function duckMediaDiscontinuity() {
+      if (!mediaSeekGate) return;
+      clearMediaSeekReleaseTimer();
+      rampParamToValue(mediaSeekGate.gain, MEDIA_SEEK_GATE_GAIN, MEDIA_SEEK_GATE_DOWN_SECONDS);
+    }
+
+    function releaseMediaDiscontinuity() {
+      if (!mediaSeekGate) return;
+      clearMediaSeekReleaseTimer();
+      mediaSeekReleaseTimer = root.setTimeout(() => {
+        mediaSeekReleaseTimer = null;
+        if (stopped || !mediaSeekGate) return;
+        rampParamToValue(mediaSeekGate.gain, 1, MEDIA_SEEK_GATE_UP_SECONDS);
+      }, MEDIA_SEEK_GATE_HOLD_MS);
+    }
+
+    function addMediaDiscontinuityListeners() {
+      if (!media.addEventListener) return;
+      media.addEventListener("loadstart", duckMediaDiscontinuity);
+      media.addEventListener("seeking", duckMediaDiscontinuity);
+      media.addEventListener("loadeddata", releaseMediaDiscontinuity);
+      media.addEventListener("seeked", releaseMediaDiscontinuity);
+      media.addEventListener("playing", releaseMediaDiscontinuity);
+      media.addEventListener("canplay", releaseMediaDiscontinuity);
+    }
+
+    function removeMediaDiscontinuityListeners() {
+      if (!media.removeEventListener) return;
+      media.removeEventListener("loadstart", duckMediaDiscontinuity);
+      media.removeEventListener("seeking", duckMediaDiscontinuity);
+      media.removeEventListener("loadeddata", releaseMediaDiscontinuity);
+      media.removeEventListener("seeked", releaseMediaDiscontinuity);
+      media.removeEventListener("playing", releaseMediaDiscontinuity);
+      media.removeEventListener("canplay", releaseMediaDiscontinuity);
+    }
+
+    function handleVisibilityChange() {
+      if (stopped || !isDocumentHidden() || timerId) return;
+      clearScheduledStep();
+      scheduleStep();
+    }
+
     function handleLevelJump(nextRmsDb) {
       if (
         !processingEnabled ||
@@ -306,9 +416,10 @@
 
       const inputJumpDb = Math.abs(nextRmsDb - previousInputRmsDb);
       previousInputRmsDb = nextRmsDb;
-      if (inputJumpDb >= 12) {
-        resetOutputTrim(0.012, true);
+      if (inputJumpDb >= JUMP_DETECT_DB) {
+        resetOutputTrim(0.02, true);
         outputTrimHoldUntilMs = context.currentTime * 1000 + 900;
+        preferEstimatedOutputUntilMs = context.currentTime * 1000 + JUMP_OUTPUT_ESTIMATE_HOLD_MS;
         return true;
       }
       return false;
@@ -346,7 +457,7 @@
       const timeConstant = reducing
         ? Math.max(25, profile.attackMs)
         : outputTooWeak && allowUpwardTrim
-          ? (highBoostSignal ? 220 : 120)
+          ? (highBoostSignal ? 140 : 120)
           : Math.max(180, profile.releaseMs * 0.35);
       currentOutputTrimDb = smoothGainDb(
         currentOutputTrimDb,
@@ -380,6 +491,8 @@
           })
         : 0;
       const predictedOutputBeforeSmoothingDb = lastRmsDb + currentGainDb + currentOutputTrimDb;
+      const gainDeltaForSnapDb = Math.abs(targetGainDb - currentGainDb);
+      const shouldForceCatchup = gainDeltaForSnapDb > 16;
       const outputWouldOvershoot = processingEnabled &&
         predictedOutputBeforeSmoothingDb > profile.targetRmsDb + 1.2;
       const safeBoostSnap = processingEnabled &&
@@ -389,32 +502,41 @@
       const shouldDuckTransition = processingEnabled &&
         (levelJumped || outputWouldOvershoot) &&
         targetGainDb < currentGainDb - 1;
-      const shouldSnapGain = outputWouldOvershoot ||
+      const inSettingsReconfig = now * 1000 < settingsReentryUntilMs;
+      const shouldSnapGain = !inSettingsReconfig && (
+        outputWouldOvershoot ||
+        levelJumped ||
+        shouldForceCatchup ||
         (levelJumped && targetGainDb < currentGainDb - 1) ||
-        safeBoostSnap;
-      if (shouldSnapGain) {
-        preferEstimatedOutputUntilMs = Math.max(
-          preferEstimatedOutputUntilMs,
-          now * 1000 + OUTPUT_ESTIMATE_HOLD_MS
-        );
+        safeBoostSnap
+      );
+      if (shouldSnapGain || inSettingsReconfig) {
+        preferEstimatedOutputUntilMs = Math.max(preferEstimatedOutputUntilMs, now * 1000 + OUTPUT_ESTIMATE_HOLD_MS);
+        outputTrimHoldUntilMs = Math.max(outputTrimHoldUntilMs, now * 1000 + JUMP_OUTPUT_TRIM_HOLD_MS);
       }
-
-      currentGainDb = shouldSnapGain
+      const autoGainRampSeconds = shouldSnapGain ? AUTO_GAIN_HOLD_RAMP_SECONDS : AUTO_GAIN_RAMP_SECONDS;
+      const gainAttackMs = profile.attackMs;
+      const gainReleaseMs = profile.releaseMs;
+      const settingsSmoothingElapsedMs = inSettingsReconfig ? Math.max(elapsedMs, 220) : elapsedMs;
+      const smoothedGainDb = shouldSnapGain
         ? targetGainDb
         : smoothGainDb(
             currentGainDb,
             targetGainDb,
-            elapsedMs,
-            profile.attackMs,
-            profile.releaseMs
+            settingsSmoothingElapsedMs,
+            gainAttackMs,
+            gainReleaseMs
           );
+      const snapSettingsSafeSeconds = inSettingsReconfig ? SETTINGS_GAIN_RAMP_SECONDS : autoGainRampSeconds;
+
+      currentGainDb = smoothedGainDb;
 
       duckTransitionOutput(now, shouldDuckTransition);
       const linearGain = Analyser.dbToLinear(currentGainDb);
-      if (shouldSnapGain) {
-        rampParamToValue(autoGain.gain, linearGain, 0.012);
+      if (shouldSnapGain || inSettingsReconfig) {
+        rampParamToValue(autoGain.gain, linearGain, snapSettingsSafeSeconds);
       } else {
-        autoGain.gain.setTargetAtTime(linearGain, context.currentTime, 0.035);
+        autoGain.gain.setTargetAtTime(linearGain, context.currentTime, AUTO_GAIN_RAMP_SECONDS);
       }
       const measuredOutputRmsDb = readOutputRmsDb();
       const measuredOutputPeakDb = readOutputPeakDb();
@@ -422,20 +544,27 @@
       outputRmsDb = preferEstimatedOutput ? getTransitionOutputRmsDb() : measuredOutputRmsDb;
       outputPeakDb = preferEstimatedOutput ? getEstimatedOutputPeakDb() : measuredOutputPeakDb;
       if (now * 1000 < outputTrimHoldUntilMs) {
-        resetOutputTrim(0.012, true);
-        const heldLinearGain = Analyser.dbToLinear(currentGainDb);
-        if (shouldSnapGain) {
-          rampParamToValue(autoGain.gain, heldLinearGain, 0.012);
+        if (targetGainDb <= 0) {
+          resetOutputTrim(0.02, true);
         } else {
-          autoGain.gain.setTargetAtTime(heldLinearGain, context.currentTime, 0.035);
+          const trimMeasurementDb = targetGainDb >= 24
+            ? Math.min(measuredOutputRmsDb, getEstimatedOutputRmsDb())
+            : measuredOutputRmsDb;
+          updateOutputTrim(trimMeasurementDb, elapsedMs, targetGainDb);
+        }
+        const heldLinearGain = Analyser.dbToLinear(currentGainDb);
+        if (shouldSnapGain || inSettingsReconfig) {
+          rampParamToValue(autoGain.gain, heldLinearGain, AUTO_GAIN_HOLD_RAMP_SECONDS);
+        } else {
+          autoGain.gain.setTargetAtTime(heldLinearGain, context.currentTime, AUTO_GAIN_RAMP_SECONDS);
         }
         outputRmsDb = preferEstimatedOutput ? getTransitionOutputRmsDb() : getEstimatedOutputRmsDb();
-        outputPeakDb = getEstimatedOutputPeakDb();
+        outputPeakDb = preferEstimatedOutput ? getEstimatedOutputPeakDb() : getEstimatedOutputPeakDb();
       } else {
-        updateOutputTrim(measuredOutputRmsDb, elapsedMs, targetGainDb);
-        outputRmsDb = preferEstimatedOutput ? getTransitionOutputRmsDb() : readOutputRmsDb();
-        outputPeakDb = preferEstimatedOutput ? getEstimatedOutputPeakDb() : readOutputPeakDb();
-      }
+          updateOutputTrim(measuredOutputRmsDb, elapsedMs, targetGainDb);
+          outputRmsDb = preferEstimatedOutput ? getTransitionOutputRmsDb() : readOutputRmsDb();
+          outputPeakDb = preferEstimatedOutput ? getEstimatedOutputPeakDb() : readOutputPeakDb();
+        }
 
       predictedPeakDb = processingEnabled ? lastPeakDb + currentGainDb + currentOutputTrimDb : lastPeakDb;
       const wasRisky = riskLevel === "risky";
@@ -467,24 +596,31 @@
 
       report((levelJumped || outputWouldOvershoot) || (riskLevel === "risky" && !wasRisky));
 
-      if (root.requestAnimationFrame) {
-        rafId = root.requestAnimationFrame(step);
-      } else {
-        timerId = root.setTimeout(step, 100);
-      }
+      scheduleStep();
     }
 
     async function start() {
       await ensureContextRunning();
       ensureGraphStarted();
+      if (root.document && root.document.addEventListener) {
+        root.document.addEventListener("visibilitychange", handleVisibilityChange);
+      }
       step();
       report(true);
     }
 
     function stop() {
       stopped = true;
-      if (rafId && root.cancelAnimationFrame) root.cancelAnimationFrame(rafId);
-      if (timerId) root.clearTimeout(timerId);
+      if (settingsApplyTimer) {
+        root.clearTimeout(settingsApplyTimer);
+        settingsApplyTimer = null;
+      }
+      clearMediaSeekReleaseTimer();
+      removeMediaDiscontinuityListeners();
+      if (root.document && root.document.removeEventListener) {
+        root.document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
+      clearScheduledStep();
       graphNodes().forEach((node) => {
         try {
           node.disconnect();
@@ -532,7 +668,7 @@
       report(true);
     }
 
-    function updateSettings(nextSettings) {
+    function applySettingsNow(nextSettings) {
       const previousTargetRmsDb = profile.targetRmsDb;
       runtimeSettings = Settings.normalizeSettings(nextSettings);
       profile = Settings.getRuntimeProfile(runtimeSettings);
@@ -540,27 +676,63 @@
         configureCompressor(compressor, profile);
         configureLimiter(limiter, profile.limiterCeilingDb);
         connectGraph();
+        resetOutputTrim(0.04, false);
+        preferEstimatedOutputUntilMs = Math.max(preferEstimatedOutputUntilMs, context.currentTime * 1000 + OUTPUT_ESTIMATE_HOLD_MS);
+        outputTrimHoldUntilMs = Math.max(outputTrimHoldUntilMs, context.currentTime * 1000 + JUMP_OUTPUT_TRIM_HOLD_MS);
+        settingsReentryUntilMs = context.currentTime * 1000 + SETTINGS_REENTRY_GRACE_MS;
         if (
           processingEnabled &&
           previousTargetRmsDb !== profile.targetRmsDb &&
           Number.isFinite(lastRmsDb) &&
           lastRmsDb > Analyser.MIN_DB + 1
         ) {
-          currentGainDb = calculateTargetGainDb({
+          const nextGainDb = calculateTargetGainDb({
             currentRmsDb: lastRmsDb,
             targetRmsDb: profile.targetRmsDb,
             maxBoostDb: profile.maxBoostDb,
             maxReductionDb: profile.maxReductionDb
           });
-          resetOutputTrim(0.02);
+          const smoothedEntryGainDb = smoothGainDb(
+            currentGainDb,
+            nextGainDb,
+            0,
+            profile.attackMs,
+            profile.releaseMs
+          );
+          currentGainDb = smoothedEntryGainDb;
           outputRmsDb = getEstimatedOutputRmsDb();
           outputPeakDb = lastPeakDb + currentGainDb + currentOutputTrimDb;
           predictedPeakDb = lastPeakDb + currentGainDb;
-          autoGain.gain.setTargetAtTime(Analyser.dbToLinear(currentGainDb), context.currentTime, 0.02);
+          autoGain.gain.setTargetAtTime(
+            Analyser.dbToLinear(currentGainDb),
+            context.currentTime,
+            SETTINGS_REENTRY_RAMP_SECONDS
+          );
         }
       }
+
       setPanic(panicActive);
       report(true);
+    }
+
+    function updateSettings(nextSettings) {
+      pendingSettingsForApply = nextSettings;
+      const nowMs = Date.now();
+      if (settingsApplyTimer) {
+        root.clearTimeout(settingsApplyTimer);
+        settingsApplyTimer = null;
+      }
+
+      const delayMs = Math.max(0, SETTINGS_APPLY_COOLDOWN_MS - (nowMs - lastSettingsApplyMs));
+      settingsApplyTimer = root.setTimeout(() => {
+        settingsApplyTimer = null;
+        const pendingSettings = pendingSettingsForApply;
+        if (!pendingSettings) return;
+
+        pendingSettingsForApply = null;
+        lastSettingsApplyMs = Date.now();
+        applySettingsNow(pendingSettings);
+      }, delayMs);
     }
 
     function getState() {

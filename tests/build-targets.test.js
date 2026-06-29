@@ -108,6 +108,7 @@ test("buildAllTargets writes clean dist folders with target manifests", () => {
       const userDocs = [
         "bug-report-template.md",
         "cross-browser-deployment.md",
+        "maintenance-checklist.md",
         "streamer-quickstart-60s.md",
         "tester-checklist.md"
       ];
@@ -141,10 +142,10 @@ test("public docs explain browser support and platform limits", () => {
 
   assert.match(readme, /docs\/cross-browser-deployment\.md/);
   assert.match(readme, /github\.com\/Fredo0xJtl\/StreamVolume-Guard\/releases/);
-  assert.match(readme, /streamvolume-guard-chromium-0\.1\.3\.zip/);
-  assert.match(readme, /streamvolume-guard-firefox-0\.1\.3\.zip/);
-  assert.match(readme, /streamvolume-guard-firefox-android-0\.1\.3\.zip/);
-  assert.match(readme, /streamvolume-guard-safari-source-0\.1\.3\.zip/);
+  assert.match(readme, /streamvolume-guard-chromium-0\.1\.4\.zip/);
+  assert.match(readme, /streamvolume-guard-firefox-0\.1\.4\.zip/);
+  assert.match(readme, /streamvolume-guard-firefox-android-0\.1\.4\.zip/);
+  assert.match(readme, /streamvolume-guard-safari-source-0\.1\.4\.zip/);
   assert.match(readme, /edge:\/\/extensions/);
   assert.match(readme, /dist[\\/]chromium/);
   assert.match(readme, /about:debugging#\/runtime\/this-firefox/);

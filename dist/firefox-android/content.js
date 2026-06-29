@@ -16,10 +16,14 @@
   const ERROR_ATTR = "streamVolumeGuardError";
   const normalizers = new Map();
   const processingMedia = new Set();
+  const SETTINGS_UPDATE_DEBOUNCE_MS = 1200;
 
   let settings = Settings.normalizeSettings();
   let observer = null;
   let scanTimer = null;
+  let settingsUpdateTimer = null;
+  let pendingSettingsUpdate = null;
+  let lastSettingsJson = "";
 
   const state = {
     ok: true,
@@ -118,12 +122,47 @@
     });
   }
 
-  function updateNormalizerSettings() {
+  function applyPendingSettingsUpdate() {
+    const nextSettings = pendingSettingsUpdate;
+    settingsUpdateTimer = null;
+    pendingSettingsUpdate = null;
+
+    if (!nextSettings) return;
+
     normalizers.forEach((normalizer) => {
       if (normalizer.updateSettings) {
-        normalizer.updateSettings(settings);
+        normalizer.updateSettings(nextSettings);
       }
     });
+  }
+
+  function updateNormalizerSettings(options) {
+    const immediate = Boolean(options && options.immediate);
+    const normalizedSettings = Settings.normalizeSettings(settings);
+    pendingSettingsUpdate = normalizedSettings;
+    const nextJson = JSON.stringify({
+      targetRmsDb: normalizedSettings.targetRmsDb,
+      maxBoostDb: normalizedSettings.maxBoostDb,
+      maxReductionDb: normalizedSettings.maxReductionDb,
+      activeProfile: normalizedSettings.activeProfile,
+      compressorEnabled: normalizedSettings.compressorEnabled,
+      limiterEnabled: normalizedSettings.limiterEnabled
+    });
+
+    if (nextJson === lastSettingsJson && !(immediate && settingsUpdateTimer)) return;
+    lastSettingsJson = nextJson;
+
+    if (settingsUpdateTimer) {
+      root.clearTimeout(settingsUpdateTimer);
+      settingsUpdateTimer = null;
+    }
+
+    if (immediate) {
+      applyPendingSettingsUpdate();
+      return;
+    }
+
+    settingsUpdateTimer = root.setTimeout(applyPendingSettingsUpdate, SETTINGS_UPDATE_DEBOUNCE_MS);
   }
 
   function handleNormalizerState(nextState) {
@@ -142,7 +181,7 @@
     });
   }
 
-  async function refreshSettings() {
+  async function refreshSettings(options) {
     settings = Settings.getSettingsForDomain(await Settings.getSettings(), state.site);
     updateState({
       activeProfile: settings.activeProfile,
@@ -150,7 +189,7 @@
       maxBoostDb: settings.maxBoostDb,
       excluded: Settings.isDomainExcluded(state.site, settings)
     });
-    updateNormalizerSettings();
+    updateNormalizerSettings(options);
     syncBypassState();
     return settings;
   }
@@ -215,7 +254,7 @@
   }
 
   async function setEnabled(enabled, mode) {
-    await refreshSettings();
+    await refreshSettings({ immediate: true });
     updateState({
       enabled: Boolean(enabled) && !state.excluded,
       mode: mode || state.mode,
@@ -231,8 +270,8 @@
     return getStatus();
   }
 
-  async function rescan() {
-    await refreshSettings();
+  async function rescan(options) {
+    await refreshSettings(options || { immediate: true });
     return scanMedia();
   }
 
@@ -258,7 +297,7 @@
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName !== "local") return;
       if (!changes[Settings.SETTINGS_KEY] && !changes[Settings.LEGACY_SETTINGS_KEY]) return;
-      rescan();
+      rescan({ immediate: false });
     });
   }
 
@@ -285,7 +324,7 @@
     }
 
     if (type === "WLG_REFRESH_SETTINGS" || type === "WLG_SCAN_MEDIA") {
-      rescan()
+      rescan({ immediate: true })
         .then(sendResponse)
         .catch((error) => sendResponse({ ok: false, error: error.message }));
       return true;
@@ -302,7 +341,7 @@
     setPanic
   };
 
-  refreshSettings()
+  refreshSettings({ immediate: true })
     .then(() => {
       startObserver();
       startSettingsChangeListener();

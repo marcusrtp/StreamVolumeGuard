@@ -361,6 +361,9 @@
   "optionsApplyIdle": {
     "message": "Apply settings"
   },
+  "optionsApplyCooldown": {
+    "message": "Wait"
+  },
   "optionsApplySending": {
     "message": "Sending..."
   },
@@ -381,6 +384,9 @@
   },
   "optionsApplyErrorStatus": {
     "message": "settings saved, sending failed"
+  },
+  "optionsApplyDebounceStatus": {
+    "message": "Please wait before applying again"
   },
   "optionsSaveErrorStatus": {
     "message": "save failed"

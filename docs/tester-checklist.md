@@ -99,12 +99,16 @@ http://127.0.0.1:8787/test-page.html
 
 À tester :
 
+- [ ] Cliquer sur `Avant brut` et vérifier qu'il y a une vraie différence audible entre faible, fort et très fort.
 - [ ] Tester `Son faible`.
 - [ ] Tester `Son fort`.
 - [ ] Tester `Son très fort` à volume système raisonnable.
 - [ ] Activer l'extension sur l'onglet.
 - [ ] Retester `Son faible`, `Son fort` et `Son très fort`.
-- [ ] Tester `Avant brut`, puis `Avec extension` dans la démo avant / après.
+- [ ] Vérifier qu'avec l'extension active, les trois sons finissent presque au même volume.
+- [ ] Tester `Avec extension` dans la démo avant / après.
+- [ ] Vérifier que `Moyenne RMS traitée` tourne autour de `-21 dB` avec le profil Stream.
+- [ ] Vérifier que `Peak OBS estimé` reste proche de `-18 dB`.
 - [ ] Vérifier que les sons forts baissent rapidement.
 - [ ] Vérifier que les sons faibles remontent progressivement.
 - [ ] Vérifier que le son ne pompe pas de façon gênante.

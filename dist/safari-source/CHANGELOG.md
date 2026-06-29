@@ -6,6 +6,10 @@ Le changelog public est volontairement consolidé : les micro-corrections faites
 
 ## Non publié
 
+- Aucun changement non publié pour le moment.
+
+## [0.1.4] - 2026-06-29
+
 ### Corrigé
 
 - Ajout d'un garde-fou contre les pics transitoires au début des changements de niveau dans le smoke test navigateur.
@@ -40,6 +44,9 @@ Le changelog public est volontairement consolidé : les micro-corrections faites
 - Profils par plateforme clarifiés dans les options avec badge recommandé/personnalisé et sélection plus explicite.
 - Plage du `Volume moyen voulu` ajustée de `-48 dB` à `-15 dB` et champ de saisie clavier déplacé dans le bloc du slider.
 - Logo de la page de test aligné sur l'icône PNG officielle de l'extension pour garantir son affichage dans les builds distribués.
+- Ajout de `docs/maintenance-checklist.md` pour figer le contrat audio validé, les commandes de vérification et les règles de reprise.
+- Correction du README : le son `Très fort` de la page de test est documenté autour de `-4 dB RMS`, pas `-3 dB`.
+- Checklist testeur clarifiée : `Avant brut` doit faire entendre les écarts, tandis que l'extension active doit rapprocher les trois niveaux.
 
 ## [0.1.3] - 2026-06-27
 
